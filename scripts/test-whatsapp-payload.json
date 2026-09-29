@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100012345678901",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "27820001111",
+              "phone_number_id": "100012345678901"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Braam van der Merwe"
+                },
+                "wa_id": "27821234567"
+              }
+            ],
+            "messages": [
+              {
+                "from": "27821234567",
+                "id": "wamid.HBgLMjc4MjEyMzQ1NjcVAgASGBgyMzlGNTRDRTI2NkEwRTYzQTYyMzg3AA==",
+                "timestamp": "1727601600",
+                "text": {
+                  "body": "Urgent: We need 4 rolls 1.6mm binding wire and 10 bags cement for the N2 culvert pour before 2pm."
+                },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
