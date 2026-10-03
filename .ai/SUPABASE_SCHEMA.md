@@ -1,5 +1,5 @@
 # Live Supabase Schema Manifest
-> **Last Synchronized:** 2026-10-03 07:46:11 UTC
+> **Last Synchronized:** 2026-10-03 09:02:48 UTC
 > **Source:** Remote Supabase Instance via pg_dump (Direct Connection)
 
 ---
@@ -11,7 +11,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 1jqksKjjckCkJTL3CShAUhbbeNrpPfdeUAupSPilGb0k46S4xTJCzAtHf19Xb23
+\restrict US7G5O1ktxnegHYUuefqXxX0o7p7Zxsbg3Induz7cWSNp7P7327syK10B60kGOt
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
@@ -713,6 +713,6 @@ ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 1jqksKjjckCkJTL3CShAUhbbeNrpPfdeUAupSPilGb0k46S4xTJCzAtHf19Xb23
+\unrestrict US7G5O1ktxnegHYUuefqXxX0o7p7Zxsbg3Induz7cWSNp7P7327syK10B60kGOt
 
 ```
