@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In | Supply Conduit Backoffice Portal</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            },
+            industrial: {
+              800: '#1e293b',
+              850: '#162032',
+              900: '#0f172a',
+              950: '#090d16',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Supabase JS SDK v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Application Config -->
+  <script src="assets/js/config.js"></script>
+</head>
+<body class="h-full flex flex-col justify-between selection:bg-emerald-500 selection:text-slate-950 font-sans antialiased">
+  
+  <!-- Subtle Industrial Mesh Background -->
+  <div class="fixed inset-0 -z-10 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-40"></div>
+
+  <!-- Header Branding -->
+  <header class="w-full border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md px-6 py-4">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <i data-lucide="layers" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <span class="font-bold tracking-tight text-white text-lg">SUPPLY CONDUIT</span>
+          <span class="text-xs uppercase tracking-widest text-emerald-400 font-mono ml-2 border border-emerald-500/30 px-1.5 py-0.5 rounded bg-emerald-500/10">v1.0 Pro</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 text-xs text-slate-400 font-mono">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>EDGE CLOUD ONLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Sign In View -->
+  <main class="flex-1 flex items-center justify-center p-6">
+    <div class="w-full max-w-md">
+      <!-- Card Container -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-2xl p-8 backdrop-blur-xl">
+        <div class="mb-6 text-center">
+          <div class="inline-flex p-3 rounded-xl bg-slate-800/80 border border-slate-700/60 mb-3 text-emerald-400">
+            <i data-lucide="shield-check" class="w-7 h-7"></i>
+          </div>
+          <h1 class="text-2xl font-bold tracking-tight text-white">Backoffice Portal Access</h1>
+          <p class="text-sm text-slate-400 mt-1">Field Requisition & Sage Pastel Procurement Engine</p>
+        </div>
+
+        <!-- Alert Notification Box -->
+        <div id="authAlert" class="hidden mb-4 p-3 rounded-lg text-sm border font-medium"></div>
+
+        <!-- Email & Password Form -->
+        <form id="authForm" class="space-y-4">
+          <div>
+            <label for="email" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Work Email Address
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <i data-lucide="mail" class="w-4 h-4"></i>
+              </span>
+              <input
+                type="email"
+                id="email"
+                required
+                placeholder="buyer@apexops.co.za"
+                class="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700/80 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="password" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+              Password
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <i data-lucide="lock" class="w-4 h-4"></i>
+              </span>
+              <input
+                type="password"
+                id="password"
+                required
+                placeholder="••••••••••••"
+                class="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700/80 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            id="signInBtn"
+            class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-semibold rounded-lg text-sm transition-all duration-150 flex items-center justify-center space-x-2 shadow-lg shadow-emerald-950/50"
+          >
+            <span id="signInText">Sign In to Dashboard</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </form>
+
+        <div class="relative my-6">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-slate-800"></div>
+          </div>
+          <div class="relative flex justify-center text-xs uppercase">
+            <span class="bg-slate-900 px-3 text-slate-500 font-mono">Dev / Field Evaluation</span>
+          </div>
+        </div>
+
+        <!-- Rapid Prototyping Demo Session Bypass -->
+        <button
+          type="button"
+          id="demoBypassBtn"
+          class="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-750 hover:border-emerald-500/50 border border-slate-700 text-slate-200 font-medium rounded-lg text-sm transition-all flex items-center justify-center space-x-2 group"
+        >
+          <i data-lucide="zap" class="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform"></i>
+          <span>Launch Demo Session (Bypass Auth)</span>
+        </button>
+
+        <p class="text-xs text-center text-slate-500 mt-5">
+          Tenant: <span class="font-semibold text-slate-400">Apex Industrial Ops</span> &bull; 
+          <span class="font-mono text-emerald-400/80">Ceres Packhouse</span>
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer Information -->
+  <footer class="w-full border-t border-slate-800/80 bg-slate-900/40 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+      <div class="flex items-center space-x-2">
+        <span class="font-semibold text-slate-400">Simple Solutions</span> &bull; Supply Conduit Field Procurement Architecture
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="hover:text-slate-400">Whisper AI Pipeline</span>
+        <span>&bull;</span>
+        <span class="hover:text-slate-400">Sage Pastel Ingestion</span>
+        <span>&bull;</span>
+        <span class="hover:text-slate-400">Meta Cloud Webhooks</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    const authForm = document.getElementById('authForm');
+    const authAlert = document.getElementById('authAlert');
+    const demoBypassBtn = document.getElementById('demoBypassBtn');
+    const signInBtn = document.getElementById('signInBtn');
+    const signInText = document.getElementById('signInText');
+
+    function showAlert(message, type = 'error') {
+      authAlert.classList.remove('hidden', 'bg-red-950/60', 'border-red-800', 'text-red-300', 'bg-emerald-950/60', 'border-emerald-800', 'text-emerald-300');
+      if (type === 'error') {
+        authAlert.classList.add('bg-red-950/60', 'border-red-800', 'text-red-300');
+      } else {
+        authAlert.classList.add('bg-emerald-950/60', 'border-emerald-800', 'text-emerald-300');
+      }
+      authAlert.textContent = message;
+    }
+
+    // Auto-redirect if already in demo session or valid Supabase session
+    (async function checkExistingSession() {
+      if (AppConfig.isDemoSession()) {
+        window.location.href = 'requisitions.html';
+        return;
+      }
+      const client = AppConfig.getSupabase();
+      if (client) {
+        const { data: { session } } = await client.auth.getSession();
+        if (session) {
+          window.location.href = 'requisitions.html';
+        }
+      }
+    })();
+
+    // Handle Demo Bypass
+    demoBypassBtn.addEventListener('click', () => {
+      AppConfig.setDemoSession(true);
+      showAlert('Starting verified demo session...', 'success');
+      setTimeout(() => {
+        window.location.href = 'requisitions.html';
+      }, 300);
+    });
+
+    // Handle Supabase Auth Sign In
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      signInBtn.disabled = true;
+      signInText.textContent = 'Verifying credentials...';
+
+      const client = AppConfig.getSupabase();
+      if (!client) {
+        showAlert('Supabase Client initialization error.');
+        signInBtn.disabled = false;
+        signInText.textContent = 'Sign In to Dashboard';
+        return;
+      }
+
+      try {
+        const { data, error } = await client.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (error) {
+          showAlert(`Authentication failed: ${error.message}`);
+          signInBtn.disabled = false;
+          signInText.textContent = 'Sign In to Dashboard';
+        } else {
+          AppConfig.setDemoSession(false);
+          localStorage.setItem('sc_user_email', data.user.email);
+          showAlert('Authentication successful. Redirecting...', 'success');
+          setTimeout(() => {
+            window.location.href = 'requisitions.html';
+          }, 400);
+        }
+      } catch (err) {
+        showAlert(`Unexpected error: ${err.message}`);
+        signInBtn.disabled = false;
+        signInText.textContent = 'Sign In to Dashboard';
+      }
+    });
+  </script>
+</body>
+</html>

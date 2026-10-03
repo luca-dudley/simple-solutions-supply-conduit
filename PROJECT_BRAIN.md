@@ -1,7 +1,7 @@
 # PROJECT BRAIN: Supply Conduit
 
 > **Single Source of Truth (SSOT)** for repository architecture, data models, runtime boundaries, and current operational state.  
-> Last Synchronized: 2026-09-29
+> Last Synchronized: 2026-10-03
 
 ---
 
@@ -35,7 +35,7 @@ supply-conduit/
 │   │   │   └── 0004-portal-ui-plan.md          # Lightweight portal Kanban & Pastel export
 │   │   └── system-map.md       # Component maps, workflows, and boundary rules
 │   └── specifications/         # Functional specs & feature roadmap
-├── portal/                     # Lightweight static web portal workspace (to be built by AGY)
+├── portal/                     # Lightweight static web portal workspace (auth, Kanban board, Pastel export)
 ├── supabase/                   # Supabase backend execution workspace (assigned to Google Jules)
 │   ├── migrations/             # SQL migrations for PostgreSQL schema, RLS, functions
 │   └── functions/              # Deno Edge Functions (whatsapp-webhook, notify-field-manager)
@@ -116,4 +116,32 @@ Updated automatically via:
   - Audited `git status` across all directories (`docs/`, `portal/`, `supabase/`, `scripts/`, `.agents/`, `.ai/`).
   - Drafted standardized Conventional Commit message for session handoff.
 - **Current Operational State**: Master architectural blueprints and two-agent collaboration contracts finalized; repository ready for Google Jules cloud backend execution and subsequent AGY static frontend construction.
+
+### [2026-10-02] - Foundational Database Migrations & Office Backoffice Portal Implementation
+- **Author**: AGY (Lead Architect & Frontend Builder)
+- **Milestones Completed**:
+  - Implemented 3-step production database migrations in `supabase/migrations/`:
+    - `20261002000001_core_entities.sql`: PostgreSQL extensions (`uuid-ossp`, `pgcrypto`, `pg_trgm`), enums (`requisition_status`, `urgency_level`), core multi-tenant tables (`companies`, `sites`, `zones`, `requesters`, `requisitions`, `requisition_items`), and GIN trigram indexes.
+    - `20261002000002_sequences_and_functions.sql`: Sequences (`requisition_ref_seq`, `po_number_seq`), auto-generation triggers for reference codes (`REQ-YYMM-XXXX`) and PO numbers (`PO-1XXXX`), and 7-day duplicate detection RPC (`check_7day_duplicates`).
+    - `20261002000003_rls_and_seed.sql`: Row-Level Security policies with multi-tenant isolation, Supabase Realtime publication configuration (`requisitions`, `requisition_items`), and initial seed data for immediate UI verification.
+  - Successfully applied migrations to remote Supabase instance and verified triggers and RPCs via psql.
+  - Synchronized active schema manifest into `.ai/SUPABASE_SCHEMA.md` using `./scripts/sync_schema.sh`.
+  - Built full lightweight office portal (`portal/`):
+    - `portal/index.html`: Dark industrial themed authentication card supporting Supabase Auth and rapid prototype demo session bypass.
+    - `portal/requisitions.html`: Master backoffice board with top navbar, company selector, live realtime connection status indicator, relief-admin triage banner toggle, filter bar (site, urgency, unassigned, duplicates, text search), and 5-column Kanban pipeline (`LOGGED`, `PENDING_QUOTE`, `PO_PLACED`, `DELIVERED_TO_SITE`, `CLOSED`).
+    - `portal/assets/js/kanban.js`: Supabase JS client integration, live WebSocket subscription (`postgres_changes`), optimistic UI updates, single-click state machine transitions, duplicate alert inspection, and triage workflows.
+    - `portal/assets/js/pastel-export.js`: Client-side Sage Pastel CSV export matching the 9-column specification with formula injection neutralization, verified against `scripts/validate-pastel-csv.py`.
+    - `portal/assets/js/config.js`: Centralized Supabase credentials and demo session management.
+- **Current Operational State**: Database schema fully migrated and live. Office Backoffice Portal fully implemented and functional. System is ready for live WhatsApp webhook ingestion and Edge Function execution.
+
+### [2026-10-03] - Session Closeout, Schema Synchronization & Portal Audit
+- **Author**: Closer Agent (@closer)
+- **Milestones Completed**:
+  - Executed `./scripts/sync_schema.sh` to extract the full active database DDL from remote Supabase via `pg_dump`.
+  - Refreshed [`.ai/SUPABASE_SCHEMA.md`](file:///home/luca/dev/simple-solutions-supply-conduit/.ai/SUPABASE_SCHEMA.md) with 719 lines of verified PostgreSQL DDL, covering core entities (`companies`, `sites`, `zones`, `requesters`, `requisitions`, `requisition_items`), enums (`requisition_status`, `urgency_level`), triggers (`generate_requisition_reference`, `assign_po_number`), and RPC function (`check_7day_duplicates`).
+  - Conducted working tree audit (`git status -s`, `git diff --stat`), confirming all migration SQL files (`supabase/migrations/`), portal components (`portal/index.html`, `portal/requisitions.html`, `portal/assets/js/kanban.js`, `portal/assets/js/pastel-export.js`, `portal/assets/js/config.js`), and sync scripts are cleanly tracked with zero stray/temporary artifacts.
+  - Verified security posture of client assets: `config.js` restricts exposed tokens strictly to Supabase public `anon` role with Row-Level Security policies active.
+  - Formulated standardized Conventional Commit message for session preservation.
+- **Current Operational State**: Production database migrations applied and live; web portal fully operational with real-time Kanban and Pastel CSV export; schema documentation fully synchronized. Next milestone: Jules backend implementation of `whatsapp-webhook` and `notify-field-manager` Edge Functions.
+
 
