@@ -83,6 +83,25 @@ npm run dev
 ```
 Access the Kanban board at: [http://localhost:3000](http://localhost:3000)
 
+### 6. Deploy Supabase Edge Functions
+Automated deployments use repository-scoped credentials from `.env` to prevent cross-account session contamination:
+
+1. Ensure `SUPABASE_ACCESS_TOKEN` is configured in `.env` (generate from [Supabase Account Tokens](https://supabase.com/dashboard/account/tokens)).
+2. Deploy functions using the automated deployment script:
+```bash
+# Deploy default webhook handler (whatsapp-webhook)
+./scripts/deploy-functions.sh
+
+# Deploy a specific edge function
+./scripts/deploy-functions.sh notify-field-manager
+
+# Deploy all edge functions in supabase/functions/
+./scripts/deploy-functions.sh --all
+
+# Synchronize secrets from .env before deploying
+./scripts/deploy-functions.sh --all --sync-secrets
+```
+
 ---
 
 ## 🧪 Testing Checklist & Verification

@@ -1,5 +1,5 @@
 # Live Supabase Schema Manifest
-> **Last Synchronized:** 2026-10-03 09:02:48 UTC
+> **Last Synchronized:** 2026-10-05 17:32:38 UTC
 > **Source:** Remote Supabase Instance via pg_dump (Direct Connection)
 
 ---
@@ -11,7 +11,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict US7G5O1ktxnegHYUuefqXxX0o7p7Zxsbg3Induz7cWSNp7P7327syK10B60kGOt
+\restrict xo9x3CfanpgMShFEJtHRatMZs9koanWkYGobtlLWmNRyhpZs5e5cP1Eb0NxsmZd
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
@@ -88,9 +88,27 @@ $$;
 --
 
 CREATE FUNCTION public.check_7day_duplicates(p_site_id uuid, p_search_tokens text[], p_exclude_requisition_id uuid DEFAULT NULL::uuid) RETURNS TABLE(suspect_requisition_id uuid, reference_code character varying, matched_item text, created_at timestamp with time zone, status public.requisition_status)
-    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    LANGUAGE plpgsql
     AS $$
+DECLARE
+    filtered_tokens TEXT[];
 BEGIN
+    SELECT ARRAY_AGG(LOWER(TRIM(t))) INTO filtered_tokens
+    FROM unnest(p_search_tokens) t
+    WHERE LOWER(TRIM(t)) NOT IN (
+        'pvc', 'steel', 'plastic', 'fitting', 'joint', 'roll', 'rolls', 'tape',
+        'meter', 'meters', 'unit', 'units', 'box', 'boxes', 'bottle', 'bottles',
+        'pipe', 'pipes', 'piece', 'pieces', 'size', 'standard', 'heavy', 'duty',
+        'and', 'the', 'for', 'with', 'item', 'items', 'bags', 'pack', 'need',
+        'urgent', 'urgently', 'please', 'line', 'packhouse', 'cold', 'room',
+        'routine', 'spares', 'parts', 'valve', 'valves', 'right', 'angle'
+    )
+    AND LENGTH(TRIM(t)) >= 4;
+
+    IF filtered_tokens IS NULL OR ARRAY_LENGTH(filtered_tokens, 1) = 0 THEN
+        RETURN;
+    END IF;
+
     RETURN QUERY
     SELECT 
         r.id,
@@ -105,7 +123,7 @@ BEGIN
       AND r.status != 'CANCELLED'
       AND (p_exclude_requisition_id IS NULL OR r.id != p_exclude_requisition_id)
       AND EXISTS (
-          SELECT 1 FROM unnest(p_search_tokens) token
+          SELECT 1 FROM unnest(filtered_tokens) token
           WHERE ri.item_description ILIKE '%' || token || '%'
       )
     ORDER BY r.created_at DESC
@@ -266,7 +284,8 @@ CREATE TABLE public.requisitions (
     total_estimated_zar numeric(12,2) DEFAULT 0.00,
     notes text,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    location_detail text
 );
 
 ALTER TABLE ONLY public.requisitions REPLICA IDENTITY FULL;
@@ -713,6 +732,6 @@ ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict US7G5O1ktxnegHYUuefqXxX0o7p7Zxsbg3Induz7cWSNp7P7327syK10B60kGOt
+\unrestrict xo9x3CfanpgMShFEJtHRatMZs9koanWkYGobtlLWmNRyhpZs5e5cP1Eb0NxsmZd
 
 ```
