@@ -243,79 +243,245 @@ Deno.test("Test Suite 3: End-to-End Ingestion, Extraction & Idempotency", async 
   await supabase.from("requisitions").delete().eq("id", dbReq.id);
 });
 
-Deno.test("Test Suite 4: Auto-provisioning Unknown Requester", async () => {
-  const unknownPhone = `+2783${Math.floor(1000000 + Math.random() * 9000000)}`;
-  const rawDigits = unknownPhone.replace(/^\+/, "");
-  const testMessageId = `wamid.test_provision_${Date.now()}`;
+Deno.test("Test Suite 4: Multi-Tenant Whitelist Invariants & Company Code Auto-Enrollment (ADR-0005)", async (t) => {
   const supabase = getServiceRoleClient();
 
-  const payload = JSON.stringify({
-    object: "whatsapp_business_account",
-    entry: [
-      {
-        id: "WABA_ID_200",
-        changes: [
-          {
-            field: "messages",
-            value: {
-              messaging_product: "whatsapp",
-              metadata: {
-                display_phone_number: "27821234567",
-                phone_number_id: "100012345678901",
+  await t.step("Unknown phone number returns 200 OK friendly receipt without creating requisition or requester", async () => {
+    const unknownPhone = `+2783${Math.floor(1000000 + Math.random() * 9000000)}`;
+    const rawDigits = unknownPhone.replace(/^\+/, "");
+    const testMessageId = `wamid.test_unknown_${Date.now()}`;
+
+    const payload = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "WABA_ID_UNKNOWN",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "27821234567",
+                  phone_number_id: "100012345678901",
+                },
+                contacts: [
+                  {
+                    profile: { name: "Unregistered Worker" },
+                    wa_id: rawDigits,
+                  },
+                ],
+                messages: [
+                  {
+                    from: rawDigits,
+                    id: testMessageId,
+                    timestamp: Math.floor(Date.now() / 1000).toString(),
+                    type: "text",
+                    text: { body: "Please send 5 rolls binding wire for fence repair" },
+                  },
+                ],
               },
-              contacts: [
-                {
-                  profile: { name: "Thabo Mokoena" },
-                  wa_id: rawDigits,
-                },
-              ],
-              messages: [
-                {
-                  from: rawDigits,
-                  id: testMessageId,
-                  timestamp: Math.floor(Date.now() / 1000).toString(),
-                  type: "text",
-                  text: { body: "Please send 5 rolls binding wire for fence repair" },
-                },
-              ],
             },
-          },
-        ],
+          ],
+        },
+      ],
+    });
+
+    const sig = await computeTestSignature(payload, APP_SECRET);
+    const req = new Request("https://example.com/webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": sig,
       },
-    ],
+      body: payload,
+    });
+
+    const res = await handleWhatsAppWebhook(req);
+    assertEquals(res.status, 200);
+    const data = await res.json();
+    assertEquals(data.success, true);
+    assertEquals(data.unlinked, true);
+
+    // Verify NO requester or requisition was created
+    const { data: checkReq } = await supabase
+      .from("requesters")
+      .select("id")
+      .eq("phone_number", unknownPhone)
+      .maybeSingle();
+    assertEquals(checkReq, null);
+
+    const { data: checkRequisition } = await supabase
+      .from("requisitions")
+      .select("id")
+      .eq("whatsapp_message_id", testMessageId)
+      .maybeSingle();
+    assertEquals(checkRequisition, null);
   });
 
-  const sig = await computeTestSignature(payload, APP_SECRET);
-  const req = new Request("https://example.com/webhook", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Hub-Signature-256": sig,
-    },
-    body: payload,
+  await t.step("Inbound 6-character Company Code auto-enrolls requester into tenant whitelist", async () => {
+    const onboardingPhone = `+2784${Math.floor(1000000 + Math.random() * 9000000)}`;
+    const rawDigits = onboardingPhone.replace(/^\+/, "");
+    const testMessageId = `wamid.test_code_${Date.now()}`;
+
+    const payload = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "WABA_ID_ONBOARD",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "27821234567",
+                  phone_number_id: "100012345678901",
+                },
+                contacts: [
+                  {
+                    profile: { name: "Thabo Mokoena" },
+                    wa_id: rawDigits,
+                  },
+                ],
+                messages: [
+                  {
+                    from: rawDigits,
+                    id: testMessageId,
+                    timestamp: Math.floor(Date.now() / 1000).toString(),
+                    type: "text",
+                    text: { body: "APEX01" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const sig = await computeTestSignature(payload, APP_SECRET);
+    const req = new Request("https://example.com/webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": sig,
+      },
+      body: payload,
+    });
+
+    const res = await handleWhatsAppWebhook(req);
+    assertEquals(res.status, 200);
+    const data = await res.json();
+    assertEquals(data.success, true);
+    assertEquals(data.onboarding, true);
+    assertNotEquals(data.requester_id, undefined);
+
+    // Verify requester was persisted with company_id and default site
+    const { data: enrolledRequester } = await supabase
+      .from("requesters")
+      .select("id, name, phone_number, company_id, default_site_id, is_active")
+      .eq("id", data.requester_id)
+      .single();
+
+    if (!enrolledRequester) {
+      throw new Error("Expected auto-enrolled requester in database.");
+    }
+    assertEquals(enrolledRequester.name, "Thabo Mokoena");
+    assertEquals(enrolledRequester.phone_number, onboardingPhone);
+    assertEquals(enrolledRequester.is_active, true);
+    assertNotEquals(enrolledRequester.company_id, null);
+
+    // Clean up
+    await supabase.from("requesters").delete().eq("id", enrolledRequester.id);
   });
 
-  const res = await handleWhatsAppWebhook(req);
-  assertEquals(res.status, 200);
-  const data = await res.json();
-  assertEquals(data.success, true);
+  await t.step("Deactivated requester (is_active = false) returns 200 OK inactive alert without creating requisition", async () => {
+    const inactivePhone = `+2785${Math.floor(1000000 + Math.random() * 9000000)}`;
+    const rawDigits = inactivePhone.replace(/^\+/, "");
+    const testMessageId = `wamid.test_inactive_${Date.now()}`;
 
-  // Verify that new requester was auto-provisioned
-  const { data: provRequester } = await supabase
-    .from("requesters")
-    .select("id, name, phone_number, default_site_id")
-    .eq("phone_number", unknownPhone)
-    .single();
+    // Provision an inactive requester
+    const defaultCompId = Deno.env.get("DEFAULT_COMPANY_ID") || "00000000-0000-0000-0000-000000000001";
+    const { data: tempRequester, error: tempErr } = await supabase
+      .from("requesters")
+      .insert({
+        company_id: defaultCompId,
+        phone_number: inactivePhone,
+        name: "Suspended Operator",
+        role_title: "Former Field Hand",
+        is_active: false,
+      })
+      .select("id")
+      .single();
 
-  if (!provRequester) {
-    throw new Error("Expected auto-provisioned requester to exist.");
-  }
-  assertEquals(provRequester.name, "Thabo Mokoena");
-  assertNotEquals(provRequester.default_site_id, null);
+    if (tempErr || !tempRequester) {
+      throw new Error(`Failed to create inactive requester fixture: ${tempErr?.message}`);
+    }
 
-  // Clean up
-  await supabase.from("requisitions").delete().eq("id", data.requisition_id);
-  await supabase.from("requesters").delete().eq("id", provRequester.id);
+    const payload = JSON.stringify({
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "WABA_ID_INACTIVE",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                metadata: {
+                  display_phone_number: "27821234567",
+                  phone_number_id: "100012345678901",
+                },
+                contacts: [
+                  {
+                    profile: { name: "Suspended Operator" },
+                    wa_id: rawDigits,
+                  },
+                ],
+                messages: [
+                  {
+                    from: rawDigits,
+                    id: testMessageId,
+                    timestamp: Math.floor(Date.now() / 1000).toString(),
+                    type: "text",
+                    text: { body: "Need 2 new spanners urgently" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const sig = await computeTestSignature(payload, APP_SECRET);
+    const req = new Request("https://example.com/webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Hub-Signature-256": sig,
+      },
+      body: payload,
+    });
+
+    const res = await handleWhatsAppWebhook(req);
+    assertEquals(res.status, 200);
+    const data = await res.json();
+    assertEquals(data.success, true);
+    assertEquals(data.inactive, true);
+
+    // Verify NO requisition was created
+    const { data: checkRequisition } = await supabase
+      .from("requisitions")
+      .select("id")
+      .eq("whatsapp_message_id", testMessageId)
+      .maybeSingle();
+    assertEquals(checkRequisition, null);
+
+    // Clean up
+    await supabase.from("requesters").delete().eq("id", tempRequester.id);
+  });
 });
 
 Deno.test("Test Suite 5: 7-Day Duplicate Order Detection", async () => {
@@ -523,6 +689,18 @@ Deno.test("Test Suite 8: Dynamic Multi-Tier Location Hierarchy", async () => {
   const testMessageId = `wamid.test_loc_${Date.now()}`;
   const testPhone = "+27829990001";
   const rawDigits = "27829990001";
+
+  // Pre-seed requester for whitelist validation
+  const { data: defaultComp } = await supabase.from("companies").select("id").limit(1).single();
+  if (!defaultComp) throw new Error("No company found for test");
+  const { error: seedErr } = await supabase.from("requesters").upsert({
+    company_id: defaultComp.id,
+    phone_number: testPhone,
+    name: "Jan de Wet",
+    role_title: "Packhouse Engineer",
+    is_active: true,
+  }, { onConflict: "company_id,phone_number" });
+  if (seedErr) throw new Error(`Failed to seed test requester: ${seedErr.message}`);
 
   const payload = JSON.stringify({
     object: "whatsapp_business_account",

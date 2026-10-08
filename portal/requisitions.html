@@ -62,7 +62,7 @@
 <body class="h-full flex flex-col font-sans antialiased overflow-hidden bg-slate-50 text-slate-800 selection:bg-emerald-500 selection:text-white">
 
   <!-- Top Master Navigation -->
-  <header class="w-full bg-white border-b border-slate-200 px-6 py-3 flex-shrink-0 z-30 shadow-xs">
+  <header class="w-full bg-white border-b border-slate-200 px-6 py-2.5 flex-shrink-0 z-30 shadow-xs">
     <div class="flex items-center justify-between gap-4">
       
       <!-- Brand & Title -->
@@ -76,12 +76,12 @@
               <span class="font-bold tracking-tight text-slate-900 text-base">SUPPLY CONDUIT</span>
               <span class="text-[10px] uppercase font-mono font-semibold tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700">Operations</span>
             </div>
-            <p class="text-[11px] text-slate-500 leading-none">Field Procurement & Operational Tracker</p>
+            <p class="text-[11px] text-slate-500 leading-none">Field Procurement &amp; Operational Tracker</p>
           </div>
         </a>
       </div>
 
-      <!-- Center Status & Relief Toggle -->
+      <!-- Center Status, Field Team & Relief Controls -->
       <div class="flex items-center space-x-3">
         <!-- Live Connection Status Pill -->
         <div id="connectionStatusPill" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-mono">
@@ -89,11 +89,23 @@
           <span id="connectionText" class="text-slate-600 font-medium">Connecting Realtime...</span>
         </div>
 
+        <!-- Field Team Whitelist Modal Button -->
+        <button
+          id="openTeamModalBtn"
+          type="button"
+          class="flex items-center space-x-1.5 px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 transition-all shadow-xs cursor-pointer"
+          title="Manage field staff & mobile whitelist"
+        >
+          <i data-lucide="users" class="w-3.5 h-3.5 text-emerald-600"></i>
+          <span>Field Team</span>
+          <span id="navTeamCountBadge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold font-mono">0</span>
+        </button>
+
         <!-- Relief-Admin Triage Banner Toggle -->
         <button
           id="reliefToggleBtn"
           type="button"
-          class="flex items-center space-x-1.5 px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 transition-all shadow-xs"
+          class="flex items-center space-x-1.5 px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 transition-all shadow-xs cursor-pointer"
           title="Toggle shared relief triage mode"
         >
           <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-500"></i>
@@ -103,20 +115,27 @@
 
       <!-- User Identity & Logout -->
       <div class="flex items-center space-x-3">
-        <div class="flex items-center space-x-2 pl-3">
-          <div class="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-xs font-mono text-emerald-700 font-bold">
-            <i data-lucide="user" class="w-4 h-4"></i>
+        <div id="userProfileCard" class="flex items-center space-x-2.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+          <div class="w-7 h-7 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[11px] font-mono text-emerald-800 font-bold">
+            <i data-lucide="user" class="w-3.5 h-3.5"></i>
           </div>
-          <span id="userEmailSpan" class="text-xs font-medium text-slate-700 hidden lg:inline max-w-[160px] truncate">ops@company.co.za</span>
-          <button
-            id="signOutBtn"
-            type="button"
-            class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-slate-100 transition-all"
-            title="Sign Out"
-          >
-            <i data-lucide="log-out" class="w-4 h-4"></i>
-          </button>
+          <div class="flex flex-col text-left">
+            <div class="flex items-center space-x-1.5">
+              <span id="userNameSpan" class="text-xs font-semibold text-slate-800 leading-tight">Authenticating...</span>
+              <span id="userRoleBadge" class="text-[9px] uppercase font-mono px-1 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">buyer</span>
+            </div>
+            <span id="userCompanySpan" class="text-[10px] text-slate-500 font-mono leading-none">Apex Industrial Ops &bull; APEX01</span>
+          </div>
         </div>
+
+        <button
+          id="signOutBtn"
+          type="button"
+          class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
+          title="Sign Out"
+        >
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
       </div>
 
     </div>
@@ -134,10 +153,10 @@
         </span>
       </div>
       <div class="flex items-center space-x-2">
-        <button id="quickClaimUnassignedBtn" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-xs transition-all shadow-xs">
+        <button id="quickClaimUnassignedBtn" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded text-xs transition-all shadow-xs cursor-pointer">
           Claim First Unassigned
         </button>
-        <button id="dismissReliefBannerBtn" class="p-1 text-amber-700 hover:text-amber-900">
+        <button id="dismissReliefBannerBtn" class="p-1 text-amber-700 hover:text-amber-900 cursor-pointer">
           <i data-lucide="x" class="w-3.5 h-3.5"></i>
         </button>
       </div>
@@ -285,7 +304,9 @@
     </div>
   </main>
 
-  <!-- Modal: Requisition Inspection & Practical Operations Action -->
+  <!-- ======================================================================= -->
+  <!-- MODAL: Requisition Inspection & Practical Operations Action             -->
+  <!-- ======================================================================= -->
   <div id="inspectionModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="relative w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150">
       
@@ -304,7 +325,7 @@
             <p id="modalSiteZone" class="text-xs text-slate-500 mt-0.5">Site &bull; Zone</p>
           </div>
         </div>
-        <button id="closeModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all">
+        <button id="closeModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
@@ -324,7 +345,7 @@
                 </p>
               </div>
             </div>
-            <button id="modalDismissDuplicateBtn" class="text-[11px] px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg font-medium shadow-2xs">
+            <button id="modalDismissDuplicateBtn" class="text-[11px] px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg font-medium shadow-2xs cursor-pointer">
               Clear Flag
             </button>
           </div>
@@ -351,7 +372,7 @@
 
           <!-- Audio Voice Note Player Mock -->
           <div id="modalAudioSection" class="flex items-center space-x-3 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
-            <button id="modalPlayAudioBtn" class="w-8 h-8 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 flex items-center justify-center transition-all">
+            <button id="modalPlayAudioBtn" class="w-8 h-8 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 flex items-center justify-center transition-all cursor-pointer">
               <i data-lucide="play" class="w-4 h-4 ml-0.5"></i>
             </button>
             <div class="flex-1">
@@ -436,7 +457,7 @@
             <button
               id="modalSaveDetailsBtn"
               type="button"
-              class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg transition-all shadow-xs"
+              class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg transition-all shadow-xs cursor-pointer"
             >
               Save Details
             </button>
@@ -450,7 +471,7 @@
         <button
           id="modalCancelReqBtn"
           type="button"
-          class="px-3.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 text-slate-600 border border-slate-200 hover:border-red-300 rounded-lg text-xs font-medium transition-all shadow-xs"
+          class="px-3.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 text-slate-600 border border-slate-200 hover:border-red-300 rounded-lg text-xs font-medium transition-all shadow-xs cursor-pointer"
         >
           Cancel Order
         </button>
@@ -459,10 +480,333 @@
         <button
           id="modalAdvanceStatusBtn"
           type="button"
-          class="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all shadow-sm"
+          class="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all shadow-sm cursor-pointer"
         >
           <span id="modalAdvanceStatusText">Advance Status</span>
           <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: Operational Field Team & Whitelist Management (ADR-0005 Phase 4) -->
+  <!-- ======================================================================= -->
+  <div id="teamModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="relative w-full max-w-4xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150 flex flex-col max-h-[85vh]">
+      
+      <!-- Modal Header -->
+      <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+            <i data-lucide="users" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h2 class="text-base font-bold text-slate-900 tracking-tight">Field Team &amp; Mobile Whitelist</h2>
+              <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Code: <strong id="teamCompanyCode">APEX01</strong>
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Authorized WhatsApp mobile senders permitted to log site requisitions.</p>
+          </div>
+        </div>
+        <button id="closeTeamModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Action Toolbar -->
+      <div class="p-4 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+        <div class="flex flex-wrap items-center gap-2.5 flex-1">
+          <!-- Search Input -->
+          <div class="relative min-w-[200px] flex-1 max-w-xs">
+            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none"></i>
+            <input
+              type="text"
+              id="teamSearchInput"
+              placeholder="Filter by name, phone, or title..."
+              class="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all shadow-2xs"
+            >
+          </div>
+
+          <!-- Site Filter -->
+          <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400"></i>
+            <select id="teamSiteFilter" class="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer">
+              <option value="ALL">All Sites</option>
+            </select>
+          </div>
+
+          <!-- Status Filter -->
+          <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
+            <i data-lucide="filter" class="w-3.5 h-3.5 text-slate-400"></i>
+            <select id="teamStatusFilter" class="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer">
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active Whitelisted</option>
+              <option value="INACTIVE">Deactivated</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <!-- Download CSV Template -->
+          <button
+            id="downloadTemplateBtn"
+            type="button"
+            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium shadow-2xs transition-all cursor-pointer"
+            title="Download formatted CSV template for bulk upload"
+          >
+            <i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i>
+            <span>CSV Template</span>
+          </button>
+
+          <!-- Batch CSV Import -->
+          <button
+            id="openBatchCsvBtn"
+            type="button"
+            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium shadow-2xs transition-all cursor-pointer"
+            title="Batch import field requesters from CSV file"
+          >
+            <i data-lucide="upload-cloud" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Batch Import</span>
+          </button>
+
+          <!-- Add Requester Button -->
+          <button
+            id="openAddRequesterBtn"
+            type="button"
+            class="flex items-center space-x-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+          >
+            <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+            <span>Add Requester</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Whitelist Table Container -->
+      <div class="flex-1 overflow-y-auto p-4">
+        <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
+              <tr>
+                <th class="p-3">Full Name</th>
+                <th class="p-3">WhatsApp Number</th>
+                <th class="p-3">Role / Designation</th>
+                <th class="p-3">Default Site</th>
+                <th class="p-3 w-28 text-center">Status</th>
+                <th class="p-3 w-28 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody id="teamTableBody" class="divide-y divide-slate-100 text-slate-700">
+              <!-- Injected dynamically via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
+        <div>
+          <span>Total Whitelisted: <strong id="teamTotalCount" class="text-slate-800 font-mono">0</strong></span>
+          <span class="mx-2">&bull;</span>
+          <span>Active: <strong id="teamActiveCount" class="text-emerald-700 font-mono">0</strong></span>
+        </div>
+        <div class="text-[11px] text-slate-400">
+          Requesters can also self-enroll by messaging your 6-character code <strong class="text-slate-600">APEX01</strong> to the WhatsApp bot.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: Add / Edit Single Requester Form                                  -->
+  <!-- ======================================================================= -->
+  <div id="addRequesterModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150">
+      
+      <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">Add Field Requester</h3>
+        </div>
+        <button id="closeAddRequesterBtn" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <form id="addRequesterForm" class="p-5 space-y-4 text-xs">
+        <div>
+          <label for="reqFullName" class="block font-semibold uppercase tracking-wider text-[11px] text-slate-600 mb-1">
+            Full Name <span class="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            id="reqFullName"
+            required
+            placeholder="e.g. Sipho Khumalo"
+            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs"
+          />
+        </div>
+
+        <div>
+          <label for="reqPhoneNumber" class="block font-semibold uppercase tracking-wider text-[11px] text-slate-600 mb-1">
+            Mobile WhatsApp Number <span class="text-red-500">*</span>
+          </label>
+          <input
+            type="tel"
+            id="reqPhoneNumber"
+            required
+            placeholder="e.g. 082 123 4567 or +27821234567"
+            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs"
+          />
+          <p class="text-[10px] text-slate-400 mt-1">Auto-normalized to E.164 (+27XXXXXXXXX). Must match sender WhatsApp ID.</p>
+        </div>
+
+        <div>
+          <label for="reqRoleTitle" class="block font-semibold uppercase tracking-wider text-[11px] text-slate-600 mb-1">
+            Role / Designation
+          </label>
+          <input
+            type="text"
+            id="reqRoleTitle"
+            placeholder="e.g. Packhouse Foreman, Workshop Tech"
+            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs"
+          />
+        </div>
+
+        <div>
+          <label for="reqDefaultSite" class="block font-semibold uppercase tracking-wider text-[11px] text-slate-600 mb-1">
+            Default Assigned Site
+          </label>
+          <select
+            id="reqDefaultSite"
+            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs cursor-pointer"
+          >
+            <option value="">(None - resolved dynamically per ticket)</option>
+          </select>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+          <button
+            type="button"
+            id="cancelAddRequesterBtn"
+            class="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-medium transition-all cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            id="saveRequesterBtn"
+            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+          >
+            Save Requester
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: Batch CSV Import Tool (ADR-0005 Phase 4)                         -->
+  <!-- ======================================================================= -->
+  <div id="batchImportModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="relative w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150 flex flex-col max-h-[85vh]">
+      
+      <!-- Header -->
+      <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-3">
+          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+            <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">Batch CSV Requester Importer</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Upload a CSV file containing staff names, mobile numbers, and site assignments.</p>
+          </div>
+        </div>
+        <button id="closeBatchImportBtn" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- File Dropzone & Toolbar -->
+      <div class="p-5 border-b border-slate-200 bg-white space-y-4 flex-shrink-0">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center space-x-3">
+            <input type="file" id="csvFileInput" accept=".csv,text/csv" class="hidden">
+            <button
+              id="chooseCsvBtn"
+              type="button"
+              class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
+            >
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>Select CSV File</span>
+            </button>
+            <span id="selectedFileName" class="text-xs text-slate-500 italic">No file selected</span>
+          </div>
+
+          <div class="text-[11px] text-slate-400">
+            Formula injection protection active (neutralizes <code class="font-mono bg-slate-100 px-1 rounded">= + - @</code>)
+          </div>
+        </div>
+
+        <!-- Preview Stats Banner -->
+        <div id="csvStatsBanner" class="hidden p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+          <div class="flex items-center space-x-4">
+            <span>Total Rows: <strong id="csvTotalRows" class="text-slate-800 font-mono">0</strong></span>
+            <span>Valid: <strong id="csvValidRows" class="text-emerald-700 font-mono">0</strong></span>
+            <span>Errors: <strong id="csvErrorRows" class="text-red-600 font-mono">0</strong></span>
+          </div>
+          <span class="text-[11px] text-slate-500">Only valid rows will be imported</span>
+        </div>
+      </div>
+
+      <!-- Parsed Preview Table -->
+      <div class="flex-1 overflow-y-auto p-5">
+        <div id="csvPreviewEmpty" class="text-center py-12 text-slate-400 text-xs">
+          <i data-lucide="file-text" class="w-8 h-8 mx-auto text-slate-300 mb-2"></i>
+          Select a CSV file to inspect and validate rows before committing to database.
+        </div>
+        <div id="csvPreviewTableWrapper" class="hidden border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
+              <tr>
+                <th class="p-3">Full Name</th>
+                <th class="p-3">Phone Number</th>
+                <th class="p-3">Role Title</th>
+                <th class="p-3">Site Code / Name</th>
+                <th class="p-3 w-32 text-center">Validation</th>
+              </tr>
+            </thead>
+            <tbody id="csvPreviewTableBody" class="divide-y divide-slate-100 text-slate-700">
+              <!-- Injected dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer Action -->
+      <div class="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-end space-x-2 flex-shrink-0">
+        <button
+          type="button"
+          id="cancelBatchImportBtn"
+          class="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600 font-medium transition-all cursor-pointer"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          id="commitBatchImportBtn"
+          disabled
+          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg text-xs shadow-xs transition-all cursor-pointer flex items-center space-x-2"
+        >
+          <span id="commitBatchBtnText">Import Valid Requesters</span>
+          <i data-lucide="check" class="w-4 h-4"></i>
         </button>
       </div>
 

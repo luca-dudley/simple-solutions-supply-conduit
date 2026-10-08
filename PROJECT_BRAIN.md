@@ -1,7 +1,7 @@
 # PROJECT BRAIN: Supply Conduit
 
 > **Single Source of Truth (SSOT)** for repository architecture, data models, runtime boundaries, and current operational state.  
-> Last Synchronized: 2026-10-03
+> Last Synchronized: 2026-10-08
 
 ---
 
@@ -214,6 +214,55 @@ Updated automatically via:
     - Deployed updated edge functions (`whatsapp-webhook`, `notify-field-manager`) via `./scripts/deploy-functions.sh --all`.
     - Synchronized live PostgreSQL schema into `.ai/SUPABASE_SCHEMA.md` via `./scripts/sync_schema.sh`.
 - **Current Operational State**: Multi-facility enterprise hierarchy and high-readability industrial card templates live; automatic requester profile resolution and zero-false-positive duplicate detection active; edge functions and dashboard verified in production.
+
+### [2026-10-08] - ADR-0005 Phase 1 & Phase 2: Tenant Isolation, Fail-Closed RLS & Webhook Whitelisting
+- **Author**: Google Jules & AGY
+- **Milestones Completed**:
+  - **Phase 1: Database Migration & Fail-Closed RLS (`supabase/migrations/20261006000001_tenant_isolation_and_profiles.sql`)**:
+    - Extended `public.companies` with 6-character unique uppercase onboarding code `company_code` (e.g. `APEX01`) and unique uppercase index `idx_companies_company_code_upper`.
+    - Created `public.user_role` enum (`admin`, `buyer`, `dispatcher`, `viewer`).
+    - Implemented `public.user_profiles` multi-tenant table linked 1:1 with `auth.users(id)` and `public.companies(id)`, indexed by `(user_id, company_id)` and `company_id`.
+    - Added partial unique index `uq_requesters_active_phone` on `public.requesters(phone_number) WHERE is_active = true` to enforce single active tenant phone routing.
+    - Updated `current_user_company_id()` security definer function to resolve tenant ID directly from `public.user_profiles` via `auth.uid()`, with fallback to `app_metadata`.
+    - Hardened all Row-Level Security policies across `companies`, `sites`, `zones`, `requesters`, `requisitions`, `requisition_items`, and `user_profiles` to fail closed (purged all prototype `IS NULL` clauses).
+    - Synchronized live remote PostgreSQL schema into [`.ai/SUPABASE_SCHEMA.md`](file:///home/luca/dev/simple-solutions-supply-conduit/.ai/SUPABASE_SCHEMA.md) via `./scripts/sync_schema.sh`.
+  - **Phase 2: Inbound WhatsApp Multi-Tenant Whitelist & Auto-Enrollment (`supabase/functions/whatsapp-webhook/index.ts`)**:
+    - Replaced default company auto-provisioning with strict 3-way whitelist decision matrix:
+      1. **Active Whitelisted Requester**: Scopes requisition strictly to `requester.company_id` and `default_site_id`.
+      2. **Deactivated Requester (`is_active = false`)**: Blocks ticket creation and dispatches account inactive notice.
+      3. **Unknown Number**: Checks for valid 6-character `company_code` (`^[A-Z0-9]{6}$`). If matched, auto-enrolls requester into tenant and dispatches welcome receipt; otherwise sends unknown number guide receipt without creating records or invoking Gemini.
+    - Deployed updated `whatsapp-webhook` edge function to production Supabase cloud (`wtaewaeqmcqrwradlncj`).
+  - **Verification**:
+    - Expanded automated test suite in [`supabase/functions/whatsapp-webhook/index_test.ts`](file:///home/luca/dev/simple-solutions-supply-conduit/supabase/functions/whatsapp-webhook/index_test.ts) to 11 test suites (16 steps), achieving a **100% pass rate** (0 failures).
+- **Current Operational State**: Phase 1 and Phase 2 live; database migrations applied and WhatsApp webhook whitelisting active.
+
+### [2026-10-08] - ADR-0005 Phase 3 & Phase 4: Client Auth, Session Guards & Team Whitelist UI
+- **Author**: AGY (Lead Systems Architect & Frontend Builder)
+- **Milestones Completed**:
+  - **Phase 3: Client Authentication & Session Guards (`portal/`)**:
+    - Completely retired `#demoBypassBtn` from [`portal/index.html`](file:///home/luca/dev/simple-solutions-supply-conduit/portal/index.html).
+    - Wired authentication form strictly to `supabase.auth.signInWithPassword({ email, password })`.
+    - Integrated multi-tenant profile verification on sign in: verifies `public.user_profiles` linked to authenticated UID and confirms `is_active === true`; fails closed and immediately signs out unassociated or inactive accounts.
+    - Implemented immediate `enforceSessionGuard()` in [`portal/assets/js/kanban.js`](file:///home/luca/dev/simple-solutions-supply-conduit/portal/assets/js/kanban.js) before rendering DOM components. Redirects unauthenticated traffic immediately to `index.html`.
+    - Bound `supabase.auth.onAuthStateChange` to reactively redirect on `SIGNED_OUT` or token expiry.
+    - Completely purged hardcoded `AppConfig.COMPANY_ID` constants across all queries and realtime subscriptions—relies 100% on fail-closed PostgreSQL Row-Level Security policies.
+    - Added user identity badge in [`portal/requisitions.html`](file:///home/luca/dev/simple-solutions-supply-conduit/portal/requisitions.html) top navigation, displaying user name, role badge (`admin`/`buyer`), tenant company name, and onboarding `company_code` alongside a functional Logout button.
+  - **Phase 4: Field Team & Whitelist Management UI (`portal/`)**:
+    - Added **"Field Team"** button and live active foremen count badge in top navigation.
+    - Built **Team Management Modal** (`#teamModal`): displays tenant onboarding code (`APEX01`), search filter (name, phone, role), site filter, and status filter (All, Active, Inactive).
+    - Implemented one-click status toggle with real-time optimistic feedback to deactivate or reactivate foremen in `public.requesters`.
+    - Built **Add Requester Form Modal** (`#addRequesterModal`) with automatic E.164 phone normalization (`0821234567` -> `+27821234567`), role designation, and dynamic site selection.
+    - Built **Batch CSV Import Tool** (`#batchImportModal`):
+      - "Download CSV Template" button generating formatted template with sample rows.
+      - File picker with client-side formula injection neutralization (stripping leading `=`, `+`, `-`, `@`).
+      - Validation engine with row-by-row syntax feedback chips prior to database execution.
+      - Bulk insert commit directly into `public.requesters` scoped to active tenant.
+  - **Security & Edge Configuration**:
+    - Authored and committed [`portal/_headers`](file:///home/luca/dev/simple-solutions-supply-conduit/portal/_headers) with production Content Security Policy, frame options (`DENY`), and permission policy headers per ADR-0005 Section 6.3.
+  - **Verification**:
+    - Validated all JavaScript syntax with `node -c` (0 syntax errors).
+    - Executed live end-to-end integration tests verifying auth session, user profile resolution, site isolation, requester provisioning, deactivation, and reactivation under RLS.
+- **Current Operational State**: Phases 1 through 4 of ADR-0005 complete, verified, and operational. Ready for Phase 5 (Cloudflare Pages deployment and production custom domain binding).
 
 
 

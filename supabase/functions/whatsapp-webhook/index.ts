@@ -475,7 +475,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   }
 
   // ==========================================================================
-  // 3. Conversational Keyword Tracking Handler (STATUS / TRACK / REQ-...)
+  // 3. Extract Inbound Content & Trim Text
   // ==========================================================================
   let rawMessageText = "";
   let audioData: { data: Uint8Array; mimeType: string } | null = null;
@@ -497,21 +497,177 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
 
   rawMessageText = rawMessageText || "";
   const trimmedText = rawMessageText.trim();
+  const rawPhoneDigits = fromPhone.replace(/^\+/, "");
+
+  // ==========================================================================
+  // 4. Whitelist Verification & Multi-Tenant Routing (ADR-0005)
+  // ==========================================================================
+  const { data: matchedRequesters, error: reqLookupErr } = await supabase
+    .from("requesters")
+    .select("id, company_id, default_site_id, name, is_active, company:companies(id, name, company_code)")
+    .or(`phone_number.eq.${normalizedPhone},phone_number.eq.${rawPhoneDigits}`)
+    .limit(1);
+
+  if (reqLookupErr) {
+    console.error("[Webhook Requester] Error querying requesters:", reqLookupErr);
+  }
+
+  const existingRequester = matchedRequesters?.[0];
+
+  // Case 1: Unknown Number (Not Whitelisted)
+  if (!existingRequester) {
+    console.log(`[Webhook Whitelist] Unknown phone number ${fromPhone}. Evaluating onboarding options...`);
+
+    const trimmedUpper = trimmedText.toUpperCase();
+    const isCompanyCodePattern = /^[A-Z0-9]{6}$/.test(trimmedUpper);
+
+    if (isCompanyCodePattern) {
+      console.log(`[Webhook Whitelist] Checking 6-character Company Code: "${trimmedUpper}"`);
+      const { data: matchedCompany, error: compErr } = await supabase
+        .from("companies")
+        .select("id, name, company_code")
+        .ilike("company_code", trimmedUpper)
+        .maybeSingle();
+
+      if (compErr) {
+        console.error("[Webhook Whitelist] Company code query error:", compErr);
+      }
+
+      if (matchedCompany) {
+        console.log(`[Webhook Whitelist] Company code "${trimmedUpper}" matched company "${matchedCompany.name}" (${matchedCompany.id})`);
+
+        // Find default active site for this company
+        const { data: firstActiveSite } = await supabase
+          .from("sites")
+          .select("id, name")
+          .eq("company_id", matchedCompany.id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+
+        const defaultSiteId = firstActiveSite?.id ?? null;
+        const assignedName = contactName && contactName !== "Field Requester" ? contactName : "Field Technician";
+
+        const { data: newRequester, error: insertReqErr } = await supabase
+          .from("requesters")
+          .insert({
+            company_id: matchedCompany.id,
+            phone_number: normalizedPhone,
+            name: assignedName,
+            role_title: "Field Technician",
+            default_site_id: defaultSiteId,
+            is_active: true,
+          })
+          .select("id, name, company_id, default_site_id")
+          .single();
+
+        if (insertReqErr || !newRequester) {
+          console.error("[Webhook Whitelist] Failed to auto-enroll requester:", insertReqErr);
+          throw new Error(`Failed to enroll requester: ${insertReqErr?.message}`);
+        }
+
+        console.log(`[Webhook Whitelist] Enrolled requester ${newRequester.name} (${newRequester.id}) for ${matchedCompany.name}`);
+
+        const welcomeMsg = `🎉 *Welcome to Supply Conduit!*\n\nYour number has been linked to *${matchedCompany.name}*.\n\nYou can now send voice notes or text messages directly in this chat to log field requisitions anytime.`;
+        const sendRes = await sendWhatsAppTextMessage(fromPhone, welcomeMsg);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            onboarding: true,
+            company_id: matchedCompany.id,
+            requester_id: newRequester.id,
+            outbound_dispatched: sendRes.success,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+    }
+
+    // Friendly unknown number receipt
+    const unknownReceiptMsg =
+      "👋 Welcome to Supply Conduit. Your number is not yet linked to an active farm or facility. Please contact your operations manager or enter your 6-character Company Code.";
+    console.log(`[Webhook Whitelist] Dispatching unknown number receipt to ${fromPhone}`);
+    const sendRes = await sendWhatsAppTextMessage(fromPhone, unknownReceiptMsg);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        unlinked: true,
+        message: "Unknown phone number. Friendly receipt dispatched.",
+        outbound_dispatched: sendRes.success,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // Case 2: Deactivated Requester (is_active === false)
+  if (!existingRequester.is_active) {
+    const compName = (existingRequester.company as any)?.name || "your facility";
+    console.log(`[Webhook Whitelist] Requester ${existingRequester.id} (${fromPhone}) is deactivated for ${compName}.`);
+    const inactiveNotice = `⚠️ *Notice: Account Inactive*\n\nYour field profile for *${compName}* is currently inactive. Please contact your operations manager to re-activate your requisitions access.`;
+    const sendRes = await sendWhatsAppTextMessage(fromPhone, inactiveNotice);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        inactive: true,
+        message: "Requester account inactive.",
+        outbound_dispatched: sendRes.success,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  }
+
+  // Active Whitelisted Requester Details
+  const requesterId = existingRequester.id;
+  const companyId = existingRequester.company_id;
+  let defaultSiteId: string | null = existingRequester.default_site_id;
+
+  // Auto-update display name if placeholder or newly detected
+  const isPlaceholderName = (name: string) => {
+    const lower = (name || "").trim().toLowerCase();
+    return (
+      lower === "field requester" ||
+      lower === "field technician" ||
+      lower === "unknown requester" ||
+      lower === "requester" ||
+      lower === ""
+    );
+  };
+
+  if (
+    contactName &&
+    contactName !== "Field Requester" &&
+    (isPlaceholderName(existingRequester.name) || existingRequester.name !== contactName)
+  ) {
+    console.log(
+      `[Webhook Requester] Updating requester ${existingRequester.id} name from '${existingRequester.name}' to '${contactName}'`
+    );
+    await supabase
+      .from("requesters")
+      .update({ name: contactName })
+      .eq("id", existingRequester.id);
+    existingRequester.name = contactName;
+  }
+
+  // ==========================================================================
+  // 5. Conversational Keyword Tracking Handler (STATUS / TRACK / REQ-...)
+  // ==========================================================================
   const isStatusQuery = /^(status|track)$/i.test(trimmedText);
   const refCodeMatch = trimmedText.match(/^REQ-[A-Z0-9-]+$/i);
 
   if (isStatusQuery || refCodeMatch) {
     console.log(`[Webhook Tracking] Inbound keyword inquiry from ${fromPhone}: "${trimmedText}"`);
-    const rawPhoneDigits = fromPhone.replace(/^\+/, "");
-
-    // Look up requester
-    const { data: matchedRequesters } = await supabase
-      .from("requesters")
-      .select("id, name, default_site_id")
-      .or(`phone_number.eq.${normalizedPhone},phone_number.eq.${rawPhoneDigits}`)
-      .limit(1);
-
-    const matchedRequester = matchedRequesters?.[0];
 
     if (refCodeMatch) {
       const targetRef = trimmedText.toUpperCase();
@@ -564,24 +720,21 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
         }
       );
     } else {
-      // General STATUS / TRACK query: find active (non-closed) requisitions
-      let activeReqs: any[] = [];
-      if (matchedRequester) {
-        const { data: reqs } = await supabase
-          .from("requisitions")
-          .select(`
-            reference_code, status, created_at, location_detail,
-            site:sites(name),
-            zone:zones(name),
-            items:requisition_items(quantity, unit_of_measure, item_description)
-          `)
-          .eq("requester_id", matchedRequester.id)
-          .not("status", "in", '("CLOSED","CANCELLED")')
-          .order("created_at", { ascending: false })
-          .limit(5);
+      // General STATUS / TRACK query: find active (non-closed) requisitions for this requester
+      const { data: reqs } = await supabase
+        .from("requisitions")
+        .select(`
+          reference_code, status, created_at, location_detail,
+          site:sites(name),
+          zone:zones(name),
+          items:requisition_items(quantity, unit_of_measure, item_description)
+        `)
+        .eq("requester_id", requesterId)
+        .not("status", "in", '("CLOSED","CANCELLED")')
+        .order("created_at", { ascending: false })
+        .limit(5);
 
-        activeReqs = reqs || [];
-      }
+      const activeReqs = reqs || [];
 
       const formattedList = activeReqs.map((r: any) => ({
         reference_code: r.reference_code,
@@ -609,7 +762,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   }
 
   // ==========================================================================
-  // 4. Audio & Text Extraction via Gemini 3.8 Flash
+  // 6. Audio & Text Extraction via Gemini 3.8 Flash
   // ==========================================================================
   console.log(`[Webhook Extraction] Invoking Gemini structured extraction for: "${rawMessageText.slice(0, 80)}"`);
   const extraction = await extractWithGemini({
@@ -622,107 +775,8 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   );
 
   // ==========================================================================
-  // 5. Database Operations via Supabase Service Role Client
+  // 7. Database Operations via Supabase Service Role Client
   // ==========================================================================
-
-  // A. Auto-find or Provision Requester & Update Display Name
-  const rawPhoneDigits = fromPhone.replace(/^\+/, "");
-  const { data: matchedRequesters, error: reqLookupErr } = await supabase
-    .from("requesters")
-    .select("id, company_id, default_site_id, name")
-    .or(`phone_number.eq.${normalizedPhone},phone_number.eq.${rawPhoneDigits}`)
-    .limit(1);
-
-  if (reqLookupErr) {
-    console.error("[Webhook Requester] Error querying requesters:", reqLookupErr);
-  }
-
-  let requesterId: string;
-  let companyId: string;
-  let defaultSiteId: string | null = null;
-
-  const isPlaceholderName = (name: string) => {
-    const lower = (name || "").trim().toLowerCase();
-    return (
-      lower === "field requester" ||
-      lower === "field technician" ||
-      lower === "unknown requester" ||
-      lower === "requester" ||
-      lower === ""
-    );
-  };
-
-  if (matchedRequesters && matchedRequesters.length > 0) {
-    const existing = matchedRequesters[0];
-    requesterId = existing.id;
-    companyId = existing.company_id;
-    defaultSiteId = existing.default_site_id;
-    console.log(`[Webhook Requester] Matched existing requester: ${existing.name} (${existing.id})`);
-
-    // Update name if placeholder or actual WhatsApp contact display name is provided
-    if (
-      contactName &&
-      contactName !== "Field Requester" &&
-      (isPlaceholderName(existing.name) || existing.name !== contactName)
-    ) {
-      console.log(
-        `[Webhook Requester] Updating requester ${existing.id} name from '${existing.name}' to '${contactName}'`
-      );
-      await supabase
-        .from("requesters")
-        .update({ name: contactName })
-        .eq("id", existing.id);
-      existing.name = contactName;
-    }
-  } else {
-    console.log(`[Webhook Requester] Requester not found for ${fromPhone}. Auto-provisioning...`);
-
-    let targetCompanyId = Deno.env.get("DEFAULT_COMPANY_ID");
-    if (!targetCompanyId) {
-      const { data: defaultComp } = await supabase
-        .from("companies")
-        .select("id")
-        .limit(1)
-        .single();
-      targetCompanyId = defaultComp?.id;
-    }
-
-    if (!targetCompanyId) {
-      throw new Error("No company record found to bind new requester.");
-    }
-    companyId = targetCompanyId;
-
-    const { data: firstActiveSite } = await supabase
-      .from("sites")
-      .select("id, name")
-      .eq("company_id", companyId)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-
-    defaultSiteId = firstActiveSite?.id ?? null;
-
-    const { data: createdRequester, error: createReqErr } = await supabase
-      .from("requesters")
-      .insert({
-        company_id: companyId,
-        phone_number: normalizedPhone,
-        name: contactName,
-        role_title: "Field Requester",
-        default_site_id: defaultSiteId,
-        is_active: true,
-      })
-      .select("id, company_id, default_site_id, name")
-      .single();
-
-    if (createReqErr || !createdRequester) {
-      console.error("[Webhook Requester] Failed to auto-provision requester:", createReqErr);
-      throw new Error(`Failed to create requester: ${createReqErr?.message}`);
-    }
-
-    requesterId = createdRequester.id;
-    console.log(`[Webhook Requester] Created requester ${createdRequester.name} (${createdRequester.id})`);
-  }
 
   // B. Dynamic Location Resolution (Macro Site, Functional Zone, Granular Detail)
   const locationRes = await findOrCreateLocation(

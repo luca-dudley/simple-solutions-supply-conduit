@@ -1,7 +1,8 @@
 /**
  * kanban.js
  * Master Operational Tracker & Kanban Pipeline Controller for Supply Conduit
- * Real-time PostgREST sync, HTML5 drag-and-drop, 14-day archival, and automated delivery alerts.
+ * Real-time PostgREST sync, HTML5 drag-and-drop, 14-day archival, automated delivery alerts,
+ * fail-closed multi-tenant RLS session guards, and field team whitelist management (ADR-0005).
  */
 
 (function () {
@@ -18,10 +19,14 @@
 
   // State
   let supabase = null;
+  let currentUserProfile = null;
   let realtimeChannel = null;
   let allRequisitions = [];
   let allSites = [];
+  let allRequesters = [];
   let selectedRequisition = null;
+  let parsedCsvRows = [];
+
   let filters = {
     siteId: "ALL",
     urgency: "ALL",
@@ -31,12 +36,24 @@
     search: "",
   };
 
-  // DOM Elements
+  let teamFilters = {
+    search: "",
+    siteId: "ALL",
+    status: "ALL",
+  };
+
+  // Top Nav & Auth DOM Elements
   const connectionPill = document.getElementById("connectionStatusPill");
   const connectionDot = document.getElementById("connectionDot");
   const connectionText = document.getElementById("connectionText");
-  const userEmailSpan = document.getElementById("userEmailSpan");
+  const userNameSpan = document.getElementById("userNameSpan");
+  const userRoleBadge = document.getElementById("userRoleBadge");
+  const userCompanySpan = document.getElementById("userCompanySpan");
   const signOutBtn = document.getElementById("signOutBtn");
+  const openTeamModalBtn = document.getElementById("openTeamModalBtn");
+  const navTeamCountBadge = document.getElementById("navTeamCountBadge");
+
+  // Kanban Filter & Control Elements
   const siteFilter = document.getElementById("siteFilter");
   const urgencyFilter = document.getElementById("urgencyFilter");
   const unassignedFilter = document.getElementById("unassignedFilter");
@@ -49,7 +66,7 @@
   const quickClaimUnassignedBtn = document.getElementById("quickClaimUnassignedBtn");
   const statsTotalCount = document.getElementById("statsTotalCount");
 
-  // Inspection Modal DOM Elements
+  // Requisition Inspection Modal Elements
   const inspectionModal = document.getElementById("inspectionModal");
   const closeModalBtn = document.getElementById("closeModalBtn");
   const modalRefCode = document.getElementById("modalRefCode");
@@ -66,17 +83,55 @@
   const modalDismissDuplicateBtn = document.getElementById("modalDismissDuplicateBtn");
   const modalItemCount = document.getElementById("modalItemCount");
   const modalItemsTableBody = document.getElementById("modalItemsTableBody");
-  
-  // Operational Inputs in Modal
   const modalSupplierInput = document.getElementById("modalSupplierInput");
   const modalPoNumberInput = document.getElementById("modalPoNumberInput");
   const modalNotesInput = document.getElementById("modalNotesInput");
   const modalSaveDetailsBtn = document.getElementById("modalSaveDetailsBtn");
-
   const modalCancelReqBtn = document.getElementById("modalCancelReqBtn");
   const modalAdvanceStatusBtn = document.getElementById("modalAdvanceStatusBtn");
   const modalAdvanceStatusText = document.getElementById("modalAdvanceStatusText");
   const toastContainer = document.getElementById("toastContainer");
+
+  // Team Management Modal Elements (ADR-0005 Phase 4)
+  const teamModal = document.getElementById("teamModal");
+  const closeTeamModalBtn = document.getElementById("closeTeamModalBtn");
+  const teamCompanyCode = document.getElementById("teamCompanyCode");
+  const teamTotalCount = document.getElementById("teamTotalCount");
+  const teamActiveCount = document.getElementById("teamActiveCount");
+  const teamSearchInput = document.getElementById("teamSearchInput");
+  const teamSiteFilter = document.getElementById("teamSiteFilter");
+  const teamStatusFilter = document.getElementById("teamStatusFilter");
+  const teamTableBody = document.getElementById("teamTableBody");
+  const downloadTemplateBtn = document.getElementById("downloadTemplateBtn");
+  const openAddRequesterBtn = document.getElementById("openAddRequesterBtn");
+  const openBatchCsvBtn = document.getElementById("openBatchCsvBtn");
+
+  // Add Requester Modal Elements
+  const addRequesterModal = document.getElementById("addRequesterModal");
+  const closeAddRequesterBtn = document.getElementById("closeAddRequesterBtn");
+  const cancelAddRequesterBtn = document.getElementById("cancelAddRequesterBtn");
+  const addRequesterForm = document.getElementById("addRequesterForm");
+  const reqFullName = document.getElementById("reqFullName");
+  const reqPhoneNumber = document.getElementById("reqPhoneNumber");
+  const reqRoleTitle = document.getElementById("reqRoleTitle");
+  const reqDefaultSite = document.getElementById("reqDefaultSite");
+
+  // Batch CSV Import Elements
+  const batchImportModal = document.getElementById("batchImportModal");
+  const closeBatchImportBtn = document.getElementById("closeBatchImportBtn");
+  const cancelBatchImportBtn = document.getElementById("cancelBatchImportBtn");
+  const chooseCsvBtn = document.getElementById("chooseCsvBtn");
+  const csvFileInput = document.getElementById("csvFileInput");
+  const selectedFileName = document.getElementById("selectedFileName");
+  const csvStatsBanner = document.getElementById("csvStatsBanner");
+  const csvTotalRows = document.getElementById("csvTotalRows");
+  const csvValidRows = document.getElementById("csvValidRows");
+  const csvErrorRows = document.getElementById("csvErrorRows");
+  const csvPreviewEmpty = document.getElementById("csvPreviewEmpty");
+  const csvPreviewTableWrapper = document.getElementById("csvPreviewTableWrapper");
+  const csvPreviewTableBody = document.getElementById("csvPreviewTableBody");
+  const commitBatchImportBtn = document.getElementById("commitBatchImportBtn");
+  const commitBatchBtnText = document.getElementById("commitBatchBtnText");
 
   /**
    * Show floating toast notification
@@ -118,6 +173,7 @@
    * Relative time formatting
    */
   function formatRelativeTime(dateString) {
+    if (!dateString) return "—";
     const date = new Date(dateString);
     const now = new Date();
     const diffSecs = Math.floor((now - date) / 1000);
@@ -129,7 +185,27 @@
   }
 
   /**
-   * Formats multi-tier location: [Site Name] • [Zone Name] ([Location Detail]) or [Site Name] • [Zone Name / Detail]
+   * Phone number normalization to E.164 (+27XXXXXXXXX)
+   */
+  function normalizePhoneNumber(raw) {
+    if (!raw) return null;
+    let cleaned = raw.trim().replace(/[\s\-\(\)\.]/g, "");
+    if (cleaned.startsWith("0")) {
+      cleaned = "+27" + cleaned.slice(1);
+    } else if (cleaned.startsWith("27")) {
+      cleaned = "+" + cleaned;
+    } else if (!cleaned.startsWith("+")) {
+      cleaned = "+" + cleaned;
+    }
+    // E.164 validation: '+' followed by 7 to 15 digits
+    if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+      return null;
+    }
+    return cleaned;
+  }
+
+  /**
+   * Formats multi-tier location: [Site Name] • [Zone Name] ([Location Detail])
    */
   function formatRequisitionLocation(req, useHtml = true) {
     const siteName = req.site ? req.site.name : "Unassigned Site";
@@ -176,26 +252,116 @@
   }
 
   /**
-   * Load operational sites for filtering
+   * Session Guard: Enforces authenticated session and active user_profile (ADR-0005 Phase 3)
+   */
+  async function enforceSessionGuard() {
+    supabase = AppConfig.getSupabase();
+    if (!supabase) {
+      window.location.replace("index.html");
+      return false;
+    }
+
+    try {
+      const {
+        data: { session },
+        error: sessionErr,
+      } = await supabase.auth.getSession();
+
+      if (sessionErr || !session || !session.user) {
+        console.warn("No active Supabase session. Redirecting to sign in.");
+        AppConfig.clearSession();
+        window.location.replace("index.html");
+        return false;
+      }
+
+      // Query user_profiles directly with authenticated UID (RLS protected)
+      const { data: profile, error: profileErr } = await supabase
+        .from("user_profiles")
+        .select(`
+          id,
+          full_name,
+          role,
+          phone_number,
+          is_active,
+          company_id,
+          company:companies(id, name, company_code)
+        `)
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      if (profileErr || !profile || !profile.is_active) {
+        console.error("User account has no active profile in tenant:", profileErr);
+        await supabase.auth.signOut();
+        AppConfig.clearSession();
+        window.location.replace("index.html");
+        return false;
+      }
+
+      currentUserProfile = profile;
+      AppConfig.setStoredUserProfile(profile);
+
+      // Populate User Nav Card
+      userNameSpan.textContent = profile.full_name || session.user.email;
+      userRoleBadge.textContent = profile.role || "buyer";
+      const compName = profile.company?.name || "Facility";
+      const compCode = profile.company?.company_code || "CODE";
+      userCompanySpan.textContent = `${compName} • ${compCode}`;
+      if (teamCompanyCode) {
+        teamCompanyCode.textContent = compCode;
+      }
+
+      // Listen for reactive logout or token expiry
+      supabase.auth.onAuthStateChange((event, newSession) => {
+        if (event === "SIGNED_OUT" || !newSession) {
+          console.warn("Auth state changed to SIGNED_OUT. Redirecting to index.html.");
+          AppConfig.clearSession();
+          window.location.replace("index.html");
+        }
+      });
+
+      return true;
+    } catch (err) {
+      console.error("Session verification encountered exception:", err);
+      window.location.replace("index.html");
+      return false;
+    }
+  }
+
+  /**
+   * Load operational sites for filtering and requester assignment (scoped by RLS)
    */
   async function loadSites() {
     try {
       const { data, error } = await supabase
         .from("sites")
-        .select("id, name, code")
-        .eq("company_id", AppConfig.COMPANY_ID)
+        .select("id, name, code, is_active")
         .order("name");
 
       if (error) throw error;
       allSites = data || [];
 
-      // Populate filter dropdown
+      // Populate Board Site Filter
       siteFilter.innerHTML = '<option value="ALL">All Operational Sites</option>';
+      // Populate Team Modal Site Filter
+      teamSiteFilter.innerHTML = '<option value="ALL">All Sites</option>';
+      // Populate Add Requester Site Select
+      reqDefaultSite.innerHTML = '<option value="">(None - resolved dynamically per ticket)</option>';
+
       allSites.forEach((site) => {
-        const opt = document.createElement("option");
-        opt.value = site.id;
-        opt.textContent = `${site.name} (${site.code})`;
-        siteFilter.appendChild(opt);
+        const opt1 = document.createElement("option");
+        opt1.value = site.id;
+        opt1.textContent = `${site.name} (${site.code})`;
+        siteFilter.appendChild(opt1);
+
+        const opt2 = document.createElement("option");
+        opt2.value = site.id;
+        opt2.textContent = `${site.name} (${site.code})`;
+        teamSiteFilter.appendChild(opt2);
+
+        const opt3 = document.createElement("option");
+        opt3.value = site.id;
+        opt3.textContent = `${site.name} (${site.code})`;
+        reqDefaultSite.appendChild(opt3);
       });
     } catch (err) {
       console.error("Failed to load sites:", err);
@@ -203,7 +369,7 @@
   }
 
   /**
-   * Fetch all requisitions with line items and relational metadata
+   * Fetch all requisitions with line items and relational metadata (scoped by RLS)
    */
   async function fetchRequisitions() {
     try {
@@ -288,7 +454,7 @@
       // 14-day retention rule for CLOSED column
       if (req.status === "CLOSED" && !filters.showArchivedClosed && !filters.search) {
         const completedDate = new Date(req.updated_at || req.created_at);
-        const diffDays = (now - completedDate) / (1000 * 60 * 60 * 24);
+        const diffDays = (now.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24);
         if (diffDays > 14) {
           return false;
         }
@@ -355,268 +521,149 @@
       }
     });
 
-    // Update global metrics
-    statsTotalCount.textContent = filtered.length;
+    let totalActive = 0;
 
-    // Render each column
-    COLUMNS.forEach((colKey) => {
-      const container = document.getElementById(`col_${colKey}`);
-      const countBadge = document.getElementById(`count_${colKey}`);
-      const cards = grouped[colKey] || [];
+    COLUMNS.forEach((colStatus) => {
+      const colEl = document.getElementById(`col_${colStatus}`);
+      const countEl = document.getElementById(`count_${colStatus}`);
+      const reqsInCol = grouped[colStatus] || [];
 
-      countBadge.textContent = cards.length;
-      container.innerHTML = "";
+      if (colStatus !== "CLOSED") {
+        totalActive += reqsInCol.length;
+      }
 
-      if (cards.length === 0) {
-        container.innerHTML = `
-          <div class="h-28 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-mono">
-            <span>No orders in this stage</span>
+      countEl.textContent = reqsInCol.length.toString();
+      colEl.innerHTML = "";
+
+      if (reqsInCol.length === 0) {
+        colEl.innerHTML = `
+          <div class="h-28 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+            <span class="font-medium">No requisitions</span>
           </div>
         `;
         return;
       }
 
-      cards.forEach((req) => {
-        const cardEl = createCardElement(req);
-        container.appendChild(cardEl);
+      reqsInCol.forEach((req) => {
+        const card = createCardElement(req);
+        colEl.appendChild(card);
       });
     });
 
+    statsTotalCount.textContent = totalActive.toString();
     lucide.createIcons();
   }
 
   /**
-   * Generate card DOM node with HTML5 drag-and-drop
+   * Construct a single Kanban Card element with Native HTML5 Drag and Drop
    */
   function createCardElement(req) {
     const card = document.createElement("div");
+    card.className =
+      "kanban-card bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all cursor-grab active:cursor-grabbing space-y-2.5 relative group";
     card.setAttribute("draggable", "true");
-    card.classList.add("kanban-card");
     card.dataset.id = req.id;
     card.dataset.status = req.status;
 
-    const isCritical = req.urgency === "CRITICAL_BREAKDOWN";
-    const isUrgent = req.urgency === "URGENT";
-
     // Urgency styling
     let urgencyBadge = "";
-    if (isCritical) {
-      urgencyBadge = `
-        <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-red-50 text-red-700 border border-red-200 animate-pulse">
-          <i data-lucide="flame" class="w-3 h-3 text-red-500"></i>
-          <span>Critical</span>
-        </span>
-      `;
-    } else if (isUrgent) {
-      urgencyBadge = `
-        <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-800 border border-amber-200">
-          <i data-lucide="alert-circle" class="w-3 h-3 text-amber-600"></i>
-          <span>Urgent</span>
-        </span>
-      `;
+    if (req.urgency === "CRITICAL_BREAKDOWN") {
+      urgencyBadge =
+        '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-800 border border-red-200 flex items-center space-x-1"><i data-lucide="flame" class="w-3 h-3"></i><span>Breakdown</span></span>';
+    } else if (req.urgency === "URGENT") {
+      urgencyBadge =
+        '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">Urgent</span>';
     } else {
-      urgencyBadge = `
-        <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase bg-slate-100 text-slate-600 border border-slate-200">
-          <span>Routine</span>
-        </span>
-      `;
+      urgencyBadge =
+        '<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 text-slate-600 border border-slate-200">Routine</span>';
     }
 
-    // Duplicate Badge
-    let duplicateBanner = "";
-    if (req.is_duplicate_suspect) {
-      duplicateBanner = `
-        <div class="mb-2 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 flex items-center justify-between text-[11px] text-amber-800">
-          <div class="flex items-center space-x-1.5 font-semibold">
-            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-600"></i>
-            <span>7-Day Duplicate Suspect</span>
-          </div>
-          <span class="text-[10px] underline font-mono">Inspect</span>
-        </div>
-      `;
-    }
+    // Duplicate badge
+    const duplicateBadge = req.is_duplicate_suspect
+      ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500 text-white flex items-center space-x-1 shadow-2xs" title="7-Day Duplicate Order Suspect"><i data-lucide="alert-triangle" class="w-3 h-3"></i><span>DUP</span></span>'
+      : "";
 
-    // PO number / Supplier badge
-    let poBadge = "";
-    if (req.po_number) {
-      poBadge = `
-        <span class="px-2 py-0.5 rounded font-mono text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
-          ${req.po_number}
-        </span>
-      `;
-    }
-
-    // Items preview (clean text without accounting codes)
+    // Items preview
     const items = req.items || [];
-    let itemsPreview = "";
-    if (items.length > 0) {
-      const topItems = items.slice(0, 2);
-      itemsPreview = topItems
-        .map(
-          (it) => `
-        <div class="flex items-center justify-between text-[11px] text-slate-700">
-          <span class="truncate max-w-[210px] font-medium">&bull; ${it.quantity} ${it.unit_of_measure || "units"} ${it.item_description}</span>
+    const firstItem = items[0]?.item_description || "Requisition Item";
+    const extraCount = items.length > 1 ? ` +${items.length - 1} more` : "";
+
+    // PO & Supplier pill
+    let poSupplierPill = "";
+    if (req.supplier_name || req.po_number) {
+      const parts = [];
+      if (req.po_number) parts.push(`<span class="font-mono font-semibold">${req.po_number}</span>`);
+      if (req.supplier_name) parts.push(`<span>${req.supplier_name}</span>`);
+      poSupplierPill = `
+        <div class="text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-600 flex items-center space-x-1.5 truncate">
+          <i data-lucide="tag" class="w-3 h-3 text-slate-400 flex-shrink-0"></i>
+          <span class="truncate">${parts.join(" &bull; ")}</span>
         </div>
-      `
-        )
-        .join("");
-      if (items.length > 2) {
-        itemsPreview += `<div class="text-[10px] text-slate-400 font-medium mt-0.5">+${items.length - 2} more item${items.length - 2 > 1 ? "s" : ""}</div>`;
-      }
-    } else {
-      itemsPreview = `<div class="text-[11px] text-slate-400 italic truncate">${req.raw_message_text || "No items listed"}</div>`;
-    }
-
-    const requesterName = req.requester ? req.requester.name : "Field Requester";
-    const formattedLocationHtml = formatRequisitionLocation(req, true);
-
-    const nextConfig = NEXT_STATUS[req.status];
-    let nextActionButton = "";
-    if (nextConfig) {
-      nextActionButton = `
-        <button
-          type="button"
-          class="card-advance-btn text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-emerald-600 hover:text-white font-semibold text-slate-700 border border-slate-200 hover:border-emerald-600 flex items-center space-x-1 transition-all shadow-2xs"
-          data-id="${req.id}"
-          data-next="${nextConfig.next}"
-          title="Advance to ${nextConfig.next}"
-        >
-          <span>${nextConfig.label}</span>
-          <i data-lucide="${nextConfig.icon}" class="w-3 h-3"></i>
-        </button>
       `;
     }
 
-    card.className = `p-3.5 bg-white border ${
-      isCritical ? "border-red-300 shadow-red-100" : isUrgent ? "border-amber-300" : "border-slate-200"
-    } rounded-xl shadow-xs hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group flex flex-col justify-between space-y-2.5`;
+    // Relative timestamp
+    const relativeTime = formatRelativeTime(req.created_at);
+
+    // Multi-tier location
+    const locationString = formatRequisitionLocation(req, true);
 
     card.innerHTML = `
-      <div>
-        ${duplicateBanner}
-        <div class="flex items-center justify-between gap-1 mb-1.5">
-          <div class="flex items-center space-x-2">
-            <span class="font-mono font-bold text-xs text-slate-900 group-hover:text-emerald-700 transition-colors">
-              ${req.reference_code}
-            </span>
-            ${poBadge}
-          </div>
+      <div class="flex items-center justify-between gap-1">
+        <span class="font-mono text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">${req.reference_code}</span>
+        <div class="flex items-center space-x-1.5">
+          ${duplicateBadge}
           ${urgencyBadge}
-        </div>
-
-        <div class="text-[11px] text-slate-500 flex items-center space-x-1.5 mb-2 font-medium">
-          <i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i>
-          <span class="truncate">${formattedLocationHtml}</span>
-        </div>
-
-        <div class="bg-slate-50 border border-slate-100 rounded-lg p-2.5 space-y-1 mb-2">
-          ${itemsPreview}
-        </div>
-
-        <div class="flex items-center justify-between text-[11px] text-slate-500">
-          <div class="flex items-center space-x-1 truncate max-w-[150px]">
-            <i data-lucide="user" class="w-3 h-3 text-slate-400"></i>
-            <span class="truncate font-medium text-slate-600">${requesterName}</span>
-          </div>
-          <span class="font-mono text-slate-400">${formatRelativeTime(req.created_at)}</span>
         </div>
       </div>
 
-      <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
-        <span class="text-[11px] font-semibold text-slate-500 truncate max-w-[120px]">${req.supplier_name || "Unassigned Vendor"}</span>
-        ${nextActionButton}
+      <div>
+        <p class="text-xs font-semibold text-slate-800 line-clamp-2 leading-snug">${firstItem}${extraCount}</p>
+        <div class="flex items-center space-x-1 text-[11px] text-slate-500 mt-1 truncate">
+          <i data-lucide="map-pin" class="w-3 h-3 text-slate-400 flex-shrink-0"></i>
+          <span class="truncate">${locationString}</span>
+        </div>
+      </div>
+
+      ${poSupplierPill}
+
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+        <div class="flex items-center space-x-1 truncate max-w-[140px]">
+          <i data-lucide="user" class="w-3 h-3 text-slate-400 flex-shrink-0"></i>
+          <span class="truncate">${req.requester?.name || "Field Requester"}</span>
+        </div>
+        <span class="font-mono text-[10px] text-slate-400">${relativeTime}</span>
       </div>
     `;
 
-    // Click card opens inspection modal
-    card.addEventListener("click", (e) => {
-      if (e.target.closest(".card-advance-btn")) return;
+    // Click to inspect details
+    card.addEventListener("click", () => {
       openInspectionModal(req);
     });
 
-    // Advance button click
-    const advanceBtn = card.querySelector(".card-advance-btn");
-    if (advanceBtn) {
-      advanceBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const reqId = advanceBtn.getAttribute("data-id");
-        const nextState = advanceBtn.getAttribute("data-next");
-        await transitionRequisitionStatus(reqId, nextState);
-      });
-    }
-
-    // HTML5 Drag Event Handlers
+    // Native HTML5 Drag and Drop events
     card.addEventListener("dragstart", (e) => {
-      e.dataTransfer.setData("text/plain", req.id);
-      e.dataTransfer.effectAllowed = "move";
       card.classList.add("is-dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", req.id);
     });
 
     card.addEventListener("dragend", () => {
       card.classList.remove("is-dragging");
+      document.querySelectorAll(".kanban-column-body").forEach((col) => {
+        col.classList.remove("drag-over");
+      });
     });
 
     return card;
   }
 
   /**
-   * Advance Requisition through the state machine and trigger automated delivery alert if delivered
-   */
-  async function transitionRequisitionStatus(reqId, nextStatus) {
-    try {
-      const target = allRequisitions.find((r) => r.id === reqId);
-      if (!target) return;
-      const prevStatus = target.status;
-      target.status = nextStatus;
-      renderBoard();
-
-      const { data, error } = await supabase
-        .from("requisitions")
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq("id", reqId)
-        .select()
-        .single();
-
-      if (error) {
-        target.status = prevStatus;
-        renderBoard();
-        throw error;
-      }
-
-      showToast("Status Updated", `${target.reference_code} moved to ${nextStatus}`, "success");
-
-      // Automated Delivery Alert: if transitioned to DELIVERED_TO_SITE, dispatch WhatsApp arrival alert
-      if (nextStatus === "DELIVERED_TO_SITE") {
-        console.log(`[Delivery Alert] Triggering delivery arrival alert for ${target.reference_code}...`);
-        supabase.functions
-          .invoke("notify-field-manager", {
-            body: { id: reqId, status: "DELIVERED_TO_SITE" },
-          })
-          .then((res) => {
-            if (res.error) {
-              console.warn("[Delivery Alert] notify-field-manager warning:", res.error);
-            } else {
-              showToast("Delivery Alert Dispatched", "WhatsApp delivery arrival message sent to requester.", "info");
-            }
-          })
-          .catch((err) => {
-            console.warn("[Delivery Alert] Outbound error:", err);
-          });
-      }
-
-      await fetchRequisitions();
-    } catch (err) {
-      console.error("Transition failed:", err);
-      showToast("Update Failed", err.message, "error");
-    }
-  }
-
-  /**
-   * Setup Native HTML5 Drop Targets on Kanban Columns
+   * Setup Drag and Drop Drop Targets across all columns
    */
   function setupColumnDropTargets() {
-    COLUMNS.forEach((colKey) => {
-      const colEl = document.getElementById(`col_${colKey}`);
+    COLUMNS.forEach((colStatus) => {
+      const colEl = document.getElementById(`col_${colStatus}`);
       if (!colEl) return;
 
       colEl.addEventListener("dragover", (e) => {
@@ -634,14 +681,15 @@
       colEl.addEventListener("drop", async (e) => {
         e.preventDefault();
         colEl.classList.remove("drag-over");
-
         const reqId = e.dataTransfer.getData("text/plain");
         if (!reqId) return;
 
-        const target = allRequisitions.find((r) => r.id === reqId);
-        if (target && target.status !== colKey) {
-          await transitionRequisitionStatus(reqId, colKey);
-        }
+        const targetStatus = colEl.dataset.status;
+        const req = allRequisitions.find((r) => r.id === reqId);
+        if (!req || req.status === targetStatus) return;
+
+        console.log(`[DragDrop] Moving ${req.reference_code} to ${targetStatus}`);
+        await transitionRequisitionStatus(reqId, targetStatus);
       });
     });
   }
@@ -651,7 +699,12 @@
    */
   function openInspectionModal(req) {
     selectedRequisition = req;
+
     modalRefCode.textContent = req.reference_code;
+    modalSiteZone.innerHTML = formatRequisitionLocation(req, true);
+    modalRequesterName.textContent = `• ${req.requester?.name || "Field Requester"} (${req.requester?.phone_number || ""})`;
+    modalCreatedAt.textContent = new Date(req.created_at).toLocaleString();
+    modalRawText.textContent = req.raw_message_text ? `"${req.raw_message_text}"` : '"No raw text content."';
 
     // PO Badge
     if (req.po_number) {
@@ -662,70 +715,58 @@
     }
 
     // Urgency Badge
-    modalUrgencyBadge.textContent = req.urgency.replace("_", " ");
-    modalUrgencyBadge.className = `px-2 py-0.5 rounded text-xs font-bold uppercase ${
-      req.urgency === "CRITICAL_BREAKDOWN"
-        ? "bg-red-50 text-red-700 border border-red-200"
-        : req.urgency === "URGENT"
-        ? "bg-amber-50 text-amber-800 border border-amber-200"
-        : "bg-slate-100 text-slate-700 border border-slate-200"
-    }`;
+    modalUrgencyBadge.className = "px-2 py-0.5 rounded text-xs font-bold uppercase ";
+    if (req.urgency === "CRITICAL_BREAKDOWN") {
+      modalUrgencyBadge.classList.add("bg-red-100", "text-red-800", "border", "border-red-200");
+      modalUrgencyBadge.textContent = "🔥 Breakdown";
+    } else if (req.urgency === "URGENT") {
+      modalUrgencyBadge.classList.add("bg-amber-100", "text-amber-800", "border", "border-amber-200");
+      modalUrgencyBadge.textContent = "⚠️ Urgent";
+    } else {
+      modalUrgencyBadge.classList.add("bg-slate-100", "text-slate-600", "border", "border-slate-200");
+      modalUrgencyBadge.textContent = "Routine";
+    }
 
-    // Site & Zone
-    modalSiteZone.textContent = formatRequisitionLocation(req, false);
-
-    // Requester
-    const requesterName = req.requester ? req.requester.name : "Unknown Requester";
-    const requesterPhone = req.requester ? ` (${req.requester.phone_number})` : "";
-    modalRequesterName.textContent = `• ${requesterName}${requesterPhone}`;
-    modalCreatedAt.textContent = new Date(req.created_at).toLocaleString("en-ZA");
-
-    // WhatsApp Transcript
-    modalRawText.textContent = req.raw_message_text ? `"${req.raw_message_text}"` : "No voice note transcript logged.";
-
-    // Duplicate Suspect Details
+    // Duplicate Warning
     if (req.is_duplicate_suspect) {
       modalDuplicateWarning.classList.remove("hidden");
-      modalDuplicateRef.textContent = req.duplicate_of_id ? `prior requisition (${req.duplicate_of_id.slice(0, 8)})` : "recent order";
     } else {
       modalDuplicateWarning.classList.add("hidden");
     }
 
-    // Render Streamlined Line Items (Description, Quantity, UOM only)
+    // Operational Inputs
+    modalSupplierInput.value = req.supplier_name || "";
+    modalPoNumberInput.value = req.po_number || "";
+    modalNotesInput.value = req.notes || "";
+
+    // Line items table
     const items = req.items || [];
-    modalItemCount.textContent = `${items.length} item${items.length === 1 ? "" : "s"}`;
+    modalItemCount.textContent = `${items.length} ${items.length === 1 ? "item" : "items"}`;
     modalItemsTableBody.innerHTML = "";
 
     if (items.length === 0) {
       modalItemsTableBody.innerHTML = `
         <tr>
-          <td colspan="3" class="p-4 text-center text-slate-400 italic">No line items extracted.</td>
+          <td colspan="3" class="p-3 text-center text-slate-400 italic">No line items extracted.</td>
         </tr>
       `;
     } else {
       items.forEach((item) => {
-        const qty = parseFloat(item.quantity || 1.0);
         const row = document.createElement("tr");
-        row.className = "hover:bg-slate-50 transition-colors";
         row.innerHTML = `
-          <td class="p-3 text-slate-800 font-medium">${item.item_description}</td>
-          <td class="p-3 text-slate-700 font-mono">${qty.toFixed(2)}</td>
-          <td class="p-3 text-slate-500 font-mono">${item.unit_of_measure || "units"}</td>
+          <td class="p-3 font-medium text-slate-800">${item.item_description || "—"}</td>
+          <td class="p-3 font-mono font-semibold text-slate-700">${item.quantity || 1}</td>
+          <td class="p-3 text-slate-500">${item.unit_of_measure || "units"}</td>
         `;
         modalItemsTableBody.appendChild(row);
       });
     }
 
-    // Populate Operational Inputs
-    modalSupplierInput.value = req.supplier_name || "";
-    modalPoNumberInput.value = req.po_number || "";
-    modalNotesInput.value = req.notes || "";
-
-    // Status Advance Button Config
+    // Advance Status Button Config
     const nextConfig = NEXT_STATUS[req.status];
     if (nextConfig) {
       modalAdvanceStatusBtn.classList.remove("hidden");
-      modalAdvanceStatusText.textContent = `Advance: ${nextConfig.label}`;
+      modalAdvanceStatusText.textContent = nextConfig.label;
     } else {
       modalAdvanceStatusBtn.classList.add("hidden");
     }
@@ -740,13 +781,14 @@
   }
 
   /**
-   * Save Operational Details (Supplier, Invoice/PO Ref, Notes)
+   * Save Practical Operational Details from Inspection Modal
    */
   async function saveOperationalDetails() {
     if (!selectedRequisition) return;
-    const supplier_name = modalSupplierInput.value.trim();
-    const po_number = modalPoNumberInput.value.trim();
-    const notes = modalNotesInput.value.trim();
+
+    const supplierName = modalSupplierInput.value.trim() || null;
+    const poNumber = modalPoNumberInput.value.trim() || null;
+    const notes = modalNotesInput.value.trim() || null;
 
     modalSaveDetailsBtn.disabled = true;
     modalSaveDetailsBtn.textContent = "Saving...";
@@ -755,21 +797,23 @@
       const { error } = await supabase
         .from("requisitions")
         .update({
-          supplier_name: supplier_name || null,
-          po_number: po_number || null,
-          notes: notes || null,
+          supplier_name: supplierName,
+          po_number: poNumber,
+          notes: notes,
         })
         .eq("id", selectedRequisition.id);
 
       if (error) throw error;
 
-      selectedRequisition.supplier_name = supplier_name;
-      selectedRequisition.po_number = po_number;
+      selectedRequisition.supplier_name = supplierName;
+      selectedRequisition.po_number = poNumber;
       selectedRequisition.notes = notes;
 
-      showToast("Details Saved", "Supplier and operational notes updated.", "success");
+      showToast("Details Saved", `Updated details for ${selectedRequisition.reference_code}`, "success");
       await fetchRequisitions();
+      openInspectionModal(selectedRequisition);
     } catch (err) {
+      console.error("Save details failed:", err);
       showToast("Save Error", err.message, "error");
     } finally {
       modalSaveDetailsBtn.disabled = false;
@@ -778,10 +822,72 @@
   }
 
   /**
-   * Clear Duplicate Flag
+   * Status Machine Transition with Automated WhatsApp Delivery Alerts
+   */
+  async function transitionRequisitionStatus(reqId, newStatus) {
+    try {
+      const { data, error } = await supabase
+        .from("requisitions")
+        .update({ status: newStatus })
+        .eq("id", reqId)
+        .select("id, reference_code, status")
+        .single();
+
+      if (error) throw error;
+
+      showToast("Order Updated", `${data.reference_code} moved to ${newStatus}`, "success");
+
+      // Trigger automated delivery alert edge function when order arrives on site
+      if (newStatus === "DELIVERED_TO_SITE") {
+        console.log(`[Delivery Alert] Triggering outbound notification for ${data.reference_code}...`);
+        fetch(`${AppConfig.SUPABASE_URL}/functions/v1/whatsapp-webhook`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${AppConfig.SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            action: "delivery_alert",
+            requisition_id: reqId,
+          }),
+        })
+          .then((res) => res.json())
+          .then((resData) => {
+            console.log("[Delivery Alert] Dispatch response:", resData);
+            if (resData.success) {
+              showToast("Delivery Alert Dispatched", `Sent WhatsApp arrival alert to requester (${data.reference_code})`, "info");
+            }
+          })
+          .catch((err) => {
+            console.warn("[Delivery Alert] Edge function trigger warning:", err);
+          });
+      }
+
+      await fetchRequisitions();
+    } catch (err) {
+      console.error("Transition failed:", err);
+      showToast("Transition Error", err.message, "error");
+    }
+  }
+
+  /**
+   * Cancel requisition
+   */
+  async function cancelRequisition() {
+    if (!selectedRequisition) return;
+    if (!confirm(`Are you sure you want to cancel order ${selectedRequisition.reference_code}?`)) {
+      return;
+    }
+    await transitionRequisitionStatus(selectedRequisition.id, "CANCELLED");
+    closeInspectionModal();
+  }
+
+  /**
+   * Clear 7-day duplicate flag
    */
   async function dismissDuplicateFlag() {
     if (!selectedRequisition) return;
+
     try {
       const { error } = await supabase
         .from("requisitions")
@@ -789,113 +895,580 @@
         .eq("id", selectedRequisition.id);
 
       if (error) throw error;
+
       selectedRequisition.is_duplicate_suspect = false;
       modalDuplicateWarning.classList.add("hidden");
-      showToast("Duplicate Cleared", "Requisition marked as authentic / non-duplicate.", "success");
+      showToast("Duplicate Flag Cleared", `Verified order ${selectedRequisition.reference_code}`, "info");
       await fetchRequisitions();
     } catch (err) {
+      console.error("Dismiss duplicate failed:", err);
       showToast("Error", err.message, "error");
     }
   }
 
+  // ==========================================================================
+  // FIELD TEAM & WHITELIST CONTROLLER (ADR-0005 Phase 4)
+  // ==========================================================================
+
   /**
-   * Cancel Requisition
+   * Load all whitelisted requesters for current company (RLS scoped)
    */
-  async function cancelRequisition() {
-    if (!selectedRequisition) return;
-    if (!confirm(`Are you sure you want to cancel requisition ${selectedRequisition.reference_code}?`)) {
+  async function loadRequesters() {
+    try {
+      const { data, error } = await supabase
+        .from("requesters")
+        .select(`
+          id,
+          name,
+          phone_number,
+          role_title,
+          default_site_id,
+          is_active,
+          created_at,
+          site:sites(id, name, code)
+        `)
+        .order("name");
+
+      if (error) throw error;
+      allRequesters = data || [];
+
+      // Update counter badges
+      const activeCount = allRequesters.filter((r) => r.is_active).length;
+      const totalCount = allRequesters.length;
+
+      if (navTeamCountBadge) navTeamCountBadge.textContent = activeCount.toString();
+      if (teamTotalCount) teamTotalCount.textContent = totalCount.toString();
+      if (teamActiveCount) teamActiveCount.textContent = `${activeCount} Active Foremen`;
+
+      renderTeamTable();
+    } catch (err) {
+      console.error("Failed to load field requesters:", err);
+      showToast("Team Sync Error", `Could not retrieve requesters: ${err.message}`, "error");
+    }
+  }
+
+  /**
+   * Render whitelisted requesters table with status toggles
+   */
+  function renderTeamTable() {
+    if (!teamTableBody) return;
+
+    const filtered = allRequesters.filter((req) => {
+      // Search filter
+      if (teamFilters.search) {
+        const q = teamFilters.search.toLowerCase();
+        const nameMatch = req.name && req.name.toLowerCase().includes(q);
+        const phoneMatch = req.phone_number && req.phone_number.toLowerCase().includes(q);
+        const roleMatch = req.role_title && req.role_title.toLowerCase().includes(q);
+        if (!nameMatch && !phoneMatch && !roleMatch) return false;
+      }
+
+      // Site filter
+      if (teamFilters.siteId !== "ALL" && req.default_site_id !== teamFilters.siteId) {
+        return false;
+      }
+
+      // Status filter
+      if (teamFilters.status === "ACTIVE" && !req.is_active) return false;
+      if (teamFilters.status === "INACTIVE" && req.is_active) return false;
+
+      return true;
+    });
+
+    teamTableBody.innerHTML = "";
+
+    if (filtered.length === 0) {
+      teamTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="p-6 text-center text-slate-400 text-xs italic">
+            No whitelisted field staff found matching the selected filters.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    filtered.forEach((req) => {
+      const tr = document.createElement("tr");
+      tr.className = "hover:bg-slate-50 transition-colors";
+
+      const siteName = req.site?.name ? `${req.site.name} (${req.site.code})` : "— Dynamic";
+      const statusPill = req.is_active
+        ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Active</span>'
+        : '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Deactivated</span>';
+
+      const toggleBtn = req.is_active
+        ? `<button data-action="toggle-status" data-id="${req.id}" data-active="true" class="px-2.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-all cursor-pointer">Deactivate</button>`
+        : `<button data-action="toggle-status" data-id="${req.id}" data-active="false" class="px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-all cursor-pointer">Reactivate</button>`;
+
+      tr.innerHTML = `
+        <td class="p-3 font-semibold text-slate-900">${req.name}</td>
+        <td class="p-3 font-mono text-slate-700">
+          <div class="flex items-center space-x-1.5">
+            <i data-lucide="phone" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0"></i>
+            <span>${req.phone_number}</span>
+          </div>
+        </td>
+        <td class="p-3 text-slate-600">${req.role_title || "Field Technician"}</td>
+        <td class="p-3 text-slate-500">${siteName}</td>
+        <td class="p-3 text-center">${statusPill}</td>
+        <td class="p-3 text-right">${toggleBtn}</td>
+      `;
+
+      teamTableBody.appendChild(tr);
+    });
+
+    lucide.createIcons({ root: teamTableBody });
+  }
+
+  /**
+   * One-click toggle status (Reactivate / Deactivate) for requester
+   */
+  async function toggleRequesterStatus(id, currentActive) {
+    const newStatus = !currentActive;
+    const req = allRequesters.find((r) => r.id === id);
+    const staffName = req?.name || "Requester";
+
+    try {
+      const { error } = await supabase
+        .from("requesters")
+        .update({ is_active: newStatus })
+        .eq("id", id);
+
+      if (error) throw error;
+
+      showToast(
+        newStatus ? "Requester Activated" : "Requester Deactivated",
+        `${staffName} is now ${newStatus ? "authorized to log tickets" : "barred from logging tickets"}.`,
+        newStatus ? "success" : "info"
+      );
+
+      await loadRequesters();
+    } catch (err) {
+      console.error("Toggle requester status failed:", err);
+      showToast("Update Error", err.message, "error");
+    }
+  }
+
+  /**
+   * Add a single requester
+   */
+  async function handleAddRequester(e) {
+    e.preventDefault();
+
+    const fullName = reqFullName.value.trim();
+    const rawPhone = reqPhoneNumber.value.trim();
+    const roleTitle = reqRoleTitle.value.trim() || null;
+    const defaultSiteId = reqDefaultSite.value || null;
+
+    const normalizedPhone = normalizePhoneNumber(rawPhone);
+    if (!normalizedPhone) {
+      showToast(
+        "Invalid Mobile Number",
+        "Please enter a valid South African mobile number (e.g. 082 123 4567 or +27821234567).",
+        "warning"
+      );
+      reqPhoneNumber.focus();
+      return;
+    }
+
+    if (!currentUserProfile || !currentUserProfile.company_id) {
+      showToast("Session Error", "No active tenant company context found.", "error");
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from("requisitions")
-        .update({ status: "CANCELLED" })
-        .eq("id", selectedRequisition.id);
+      const { data, error } = await supabase
+        .from("requesters")
+        .insert({
+          company_id: currentUserProfile.company_id,
+          name: fullName,
+          phone_number: normalizedPhone,
+          role_title: roleTitle,
+          default_site_id: defaultSiteId,
+          is_active: true,
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
-      showToast("Cancelled", `${selectedRequisition.reference_code} was marked as CANCELLED`, "info");
-      closeInspectionModal();
-      await fetchRequisitions();
+      if (error) {
+        if (error.code === "23505") {
+          throw new Error(`Phone number ${normalizedPhone} is already active on a field profile.`);
+        }
+        throw error;
+      }
+
+      showToast("Field Requester Added", `Whitelisted ${data.name} (${data.phone_number})`, "success");
+      addRequesterModal.classList.add("hidden");
+      addRequesterForm.reset();
+      await loadRequesters();
     } catch (err) {
-      showToast("Error", err.message, "error");
+      console.error("Add requester failed:", err);
+      showToast("Enrollment Failed", err.message, "error");
     }
   }
 
   /**
-   * Event Listeners Setup
+   * Download CSV Template for batch import
    */
-  function attachEventListeners() {
-    // Site filter
-    siteFilter.addEventListener("change", () => {
-      filters.siteId = siteFilter.value;
-      renderBoard();
-    });
+  function handleDownloadTemplate() {
+    const csvHeader = "full_name,phone_number,role_title,site_name_or_code\n";
+    const sampleRows =
+      "Sipho Khumalo,0821234567,Packhouse Supervisor,CERES-01\n" +
+      "Pieter Botha,+27839876543,Workshop Foreman,CERES-01\n" +
+      "Charlize Joubert,0715551234,Cold Storage Tech,\n";
 
-    // Urgency filter
-    urgencyFilter.addEventListener("change", () => {
-      filters.urgency = urgencyFilter.value;
-      renderBoard();
-    });
+    const blob = new Blob([csvHeader + sampleRows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "supply_conduit_staff_whitelist_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Template Downloaded", "CSV template ready for filling.", "info");
+  }
 
-    // Unassigned checkbox
-    unassignedFilter.addEventListener("change", () => {
-      filters.unassignedOnly = unassignedFilter.checked;
-      renderBoard();
-    });
+  /**
+   * Client-side Formula Injection Sanitizer
+   * Neutralizes leading '=', '+', '-', '@' characters to prevent spreadsheet exploits.
+   */
+  function sanitizeCsvCell(value) {
+    if (!value) return "";
+    let trimmed = value.trim();
+    // Strip leading formula operator characters
+    while (/^[=+\-@]/.test(trimmed)) {
+      trimmed = trimmed.substring(1).trim();
+    }
+    return trimmed;
+  }
 
-    // Duplicates only checkbox
-    duplicatesOnlyFilter.addEventListener("change", () => {
-      filters.duplicatesOnly = duplicatesOnlyFilter.checked;
-      renderBoard();
-    });
+  /**
+   * Parse CSV File and Validate Rows
+   */
+  function parseAndPreviewCsv(file) {
+    selectedFileName.textContent = file.name;
+    const reader = new FileReader();
 
-    // Archived closed toggle (14-day retention rule)
-    if (showArchivedClosedToggle) {
-      showArchivedClosedToggle.addEventListener("change", () => {
-        filters.showArchivedClosed = showArchivedClosedToggle.checked;
-        renderBoard();
+    reader.onload = function (e) {
+      const text = (e.target && e.target.result) ? String(e.target.result) : "";
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      if (lines.length <= 1) {
+        showToast("Empty File", "The CSV file contains no data rows.", "warning");
+        return;
+      }
+
+      // Split header
+      const headerLine = lines[0].toLowerCase();
+      const headers = headerLine.split(",").map((h) => sanitizeCsvCell(h));
+
+      const nameIdx = headers.findIndex((h) => h.includes("name"));
+      const phoneIdx = headers.findIndex((h) => h.includes("phone"));
+      const roleIdx = headers.findIndex((h) => h.includes("role") || h.includes("title"));
+      const siteIdx = headers.findIndex((h) => h.includes("site"));
+
+      if (nameIdx === -1 || phoneIdx === -1) {
+        showToast("Invalid CSV Format", "CSV must contain at least 'full_name' and 'phone_number' columns.", "error");
+        return;
+      }
+
+      parsedCsvRows = [];
+      let validCount = 0;
+      let errorCount = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const rawRow = lines[i];
+        // Handle basic comma separation
+        const cells = rawRow.split(",").map((c) => sanitizeCsvCell(c));
+
+        const fullName = cells[nameIdx] || "";
+        const rawPhone = cells[phoneIdx] || "";
+        const roleTitle = roleIdx !== -1 ? cells[roleIdx] : "";
+        const siteText = siteIdx !== -1 ? cells[siteIdx] : "";
+
+        const normalizedPhone = normalizePhoneNumber(rawPhone);
+
+        // Match site
+        let matchedSiteId = null;
+        let matchedSiteName = siteText;
+        if (siteText) {
+          const matched = allSites.find(
+            (s) =>
+              s.code.toLowerCase() === siteText.toLowerCase() ||
+              s.name.toLowerCase() === siteText.toLowerCase()
+          );
+          if (matched) {
+            matchedSiteId = matched.id;
+            matchedSiteName = `${matched.name} (${matched.code})`;
+          }
+        }
+
+        let isValid = true;
+        let errorReason = "";
+
+        if (!fullName || fullName.length < 2) {
+          isValid = false;
+          errorReason = "Name required";
+        } else if (!normalizedPhone) {
+          isValid = false;
+          errorReason = "Invalid phone number";
+        }
+
+        if (isValid) {
+          validCount++;
+        } else {
+          errorCount++;
+        }
+
+        parsedCsvRows.push({
+          fullName,
+          rawPhone,
+          normalizedPhone,
+          roleTitle,
+          siteText: matchedSiteName,
+          siteId: matchedSiteId,
+          isValid,
+          errorReason,
+        });
+      }
+
+      // Update Preview UI
+      csvStatsBanner.classList.remove("hidden");
+      csvTotalRows.textContent = parsedCsvRows.length.toString();
+      csvValidRows.textContent = validCount.toString();
+      csvErrorRows.textContent = errorCount.toString();
+
+      csvPreviewEmpty.classList.add("hidden");
+      csvPreviewTableWrapper.classList.remove("hidden");
+      csvPreviewTableBody.innerHTML = "";
+
+      parsedCsvRows.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.className = row.isValid ? "hover:bg-slate-50" : "bg-red-50/50 hover:bg-red-50";
+
+        const statusBadge = row.isValid
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Ready</span>'
+          : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800" title="${row.errorReason}">${row.errorReason}</span>`;
+
+        tr.innerHTML = `
+          <td class="p-2.5 font-medium text-slate-900">${row.fullName || "—"}</td>
+          <td class="p-2.5 font-mono ${row.isValid ? "text-slate-700" : "text-red-700 line-through"}">${row.normalizedPhone || row.rawPhone || "—"}</td>
+          <td class="p-2.5 text-slate-500">${row.roleTitle || "Field Technician"}</td>
+          <td class="p-2.5 text-slate-500">${row.siteText || "— Dynamic"}</td>
+          <td class="p-2.5 text-center">${statusBadge}</td>
+        `;
+        csvPreviewTableBody.appendChild(tr);
       });
+
+      commitBatchImportBtn.disabled = validCount === 0;
+      commitBatchBtnText.textContent = `Import ${validCount} Requesters`;
+    };
+
+    reader.readAsText(file);
+  }
+
+  /**
+   * Commit parsed CSV rows in bulk to public.requesters
+   */
+  async function handleCommitBatchImport() {
+    const validRows = parsedCsvRows.filter((r) => r.isValid);
+    if (validRows.length === 0) return;
+
+    if (!currentUserProfile || !currentUserProfile.company_id) {
+      showToast("Session Error", "No active tenant company context found.", "error");
+      return;
     }
 
-    // Search query input
-    searchInput.addEventListener("input", () => {
-      filters.search = searchInput.value.trim();
+    commitBatchImportBtn.disabled = true;
+    commitBatchBtnText.textContent = "Importing...";
+
+    try {
+      const recordsToInsert = validRows.map((r) => ({
+        company_id: currentUserProfile.company_id,
+        name: r.fullName,
+        phone_number: r.normalizedPhone,
+        role_title: r.roleTitle || "Field Technician",
+        default_site_id: r.siteId,
+        is_active: true,
+      }));
+
+      const { data, error } = await supabase
+        .from("requesters")
+        .insert(recordsToInsert)
+        .select();
+
+      if (error) throw error;
+
+      showToast(
+        "Batch Import Complete",
+        `Successfully enrolled ${data?.length || validRows.length} field requesters to your whitelist.`,
+        "success"
+      );
+
+      batchImportModal.classList.add("hidden");
+      csvFileInput.value = "";
+      selectedFileName.textContent = "No file selected";
+      parsedCsvRows = [];
+
+      await loadRequesters();
+    } catch (err) {
+      console.error("Batch import commit failed:", err);
+      showToast("Import Failed", err.message, "error");
+    } finally {
+      commitBatchImportBtn.disabled = false;
+      commitBatchBtnText.textContent = "Import Valid Requesters";
+    }
+  }
+
+  /**
+   * Attach All Event Listeners
+   */
+  function attachEventListeners() {
+    // Top Nav Modals & Controls
+    openTeamModalBtn.addEventListener("click", () => {
+      teamModal.classList.remove("hidden");
+      loadRequesters();
+      lucide.createIcons({ root: teamModal });
+    });
+
+    closeTeamModalBtn.addEventListener("click", () => {
+      teamModal.classList.add("hidden");
+    });
+
+    // Add Requester Sub-modal
+    openAddRequesterBtn.addEventListener("click", () => {
+      addRequesterModal.classList.remove("hidden");
+      reqFullName.focus();
+      lucide.createIcons({ root: addRequesterModal });
+    });
+
+    closeAddRequesterBtn.addEventListener("click", () => {
+      addRequesterModal.classList.add("hidden");
+    });
+
+    cancelAddRequesterBtn.addEventListener("click", () => {
+      addRequesterModal.classList.add("hidden");
+    });
+
+    addRequesterForm.addEventListener("submit", handleAddRequester);
+
+    // Batch CSV Sub-modal
+    openBatchCsvBtn.addEventListener("click", () => {
+      batchImportModal.classList.remove("hidden");
+      lucide.createIcons({ root: batchImportModal });
+    });
+
+    closeBatchImportBtn.addEventListener("click", () => {
+      batchImportModal.classList.add("hidden");
+    });
+
+    cancelBatchImportBtn.addEventListener("click", () => {
+      batchImportModal.classList.add("hidden");
+    });
+
+    downloadTemplateBtn.addEventListener("click", handleDownloadTemplate);
+
+    chooseCsvBtn.addEventListener("click", () => {
+      csvFileInput.click();
+    });
+
+    csvFileInput.addEventListener("change", (e) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        parseAndPreviewCsv(files[0]);
+      }
+    });
+
+    commitBatchImportBtn.addEventListener("click", handleCommitBatchImport);
+
+    // Team Table Filters
+    teamSearchInput.addEventListener("input", (e) => {
+      teamFilters.search = e.target.value.trim();
+      renderTeamTable();
+    });
+
+    teamSiteFilter.addEventListener("change", (e) => {
+      teamFilters.siteId = e.target.value;
+      renderTeamTable();
+    });
+
+    teamStatusFilter.addEventListener("change", (e) => {
+      teamFilters.status = e.target.value;
+      renderTeamTable();
+    });
+
+    // Delegate status toggling in team table
+    teamTableBody.addEventListener("click", (e) => {
+      const target = e.target.closest("button[data-action='toggle-status']");
+      if (target) {
+        const id = target.getAttribute("data-id");
+        const active = target.getAttribute("data-active") === "true";
+        if (id) {
+          toggleRequesterStatus(id, active);
+        }
+      }
+    });
+
+    // Filter bar controls
+    siteFilter.addEventListener("change", (e) => {
+      filters.siteId = e.target.value;
       renderBoard();
     });
 
-    // Relief-Admin Triage Mode toggle
+    urgencyFilter.addEventListener("change", (e) => {
+      filters.urgency = e.target.value;
+      renderBoard();
+    });
+
+    unassignedFilter.addEventListener("change", (e) => {
+      filters.unassignedOnly = e.target.checked;
+      renderBoard();
+    });
+
+    duplicatesOnlyFilter.addEventListener("change", (e) => {
+      filters.duplicatesOnly = e.target.checked;
+      renderBoard();
+    });
+
+    showArchivedClosedToggle.addEventListener("change", (e) => {
+      filters.showArchivedClosed = e.target.checked;
+      renderBoard();
+    });
+
+    searchInput.addEventListener("input", (e) => {
+      filters.search = e.target.value.trim();
+      renderBoard();
+    });
+
+    // Relief Triage Controls
     reliefToggleBtn.addEventListener("click", () => {
-      const isVisible = !reliefBanner.classList.contains("hidden");
-      if (isVisible) {
-        reliefBanner.classList.add("hidden");
-        reliefToggleBtn.classList.remove("bg-amber-100", "border-amber-300");
-      } else {
-        reliefBanner.classList.remove("hidden");
-        reliefToggleBtn.classList.add("bg-amber-100", "border-amber-300");
-      }
+      reliefBanner.classList.toggle("hidden");
     });
 
     dismissReliefBannerBtn.addEventListener("click", () => {
       reliefBanner.classList.add("hidden");
-      reliefToggleBtn.classList.remove("bg-amber-100", "border-amber-300");
     });
 
-    // Quick Claim Unassigned Ticket
     quickClaimUnassignedBtn.addEventListener("click", async () => {
-      const unassigned = allRequisitions.find((r) => !r.assigned_buyer_id && r.status !== "CANCELLED");
-      if (!unassigned) {
-        showToast("Queue Empty", "No unassigned requisitions found.", "info");
-        return;
+      const unassigned = allRequisitions.find((r) => !r.assigned_buyer_id && r.status === "LOGGED");
+      if (unassigned) {
+        openInspectionModal(unassigned);
+        showToast("Claimed Requisition", `Viewing unassigned order ${unassigned.reference_code}`, "info");
+      } else {
+        showToast("Queue Clean", "No unassigned logged orders currently waiting in queue.", "info");
       }
-      openInspectionModal(unassigned);
-      showToast("Claimed Requisition", `Loaded ${unassigned.reference_code} for active review.`, "success");
     });
 
-    // Modal Actions
+    // Inspection Modal Controls
     closeModalBtn.addEventListener("click", closeInspectionModal);
     inspectionModal.addEventListener("click", (e) => {
-      if (e.target === inspectionModal) closeInspectionModal();
+      if (e.target === inspectionModal) {
+        closeInspectionModal();
+      }
     });
 
     modalSaveDetailsBtn.addEventListener("click", saveOperationalDetails);
@@ -927,12 +1500,12 @@
 
     // Sign Out
     signOutBtn.addEventListener("click", async () => {
-      AppConfig.setDemoSession(false);
+      AppConfig.clearSession();
       const client = AppConfig.getSupabase();
       if (client) {
         await client.auth.signOut();
       }
-      window.location.href = "index.html";
+      window.location.replace("index.html");
     });
   }
 
@@ -940,29 +1513,22 @@
    * App Initializer
    */
   async function init() {
-    supabase = AppConfig.getSupabase();
-    if (!supabase) {
-      console.error("Supabase client not initialized.");
+    // 1. Enforce Fail-Closed Session Guard
+    const isSessionValid = await enforceSessionGuard();
+    if (!isSessionValid) {
       return;
     }
 
-    // Auth verification
-    const isDemo = AppConfig.isDemoSession();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!isDemo && !session) {
-      window.location.href = "index.html";
-      return;
-    }
-
-    userEmailSpan.textContent = AppConfig.getActiveUserEmail();
-
+    // 2. Attach UI and Pipeline Event Listeners
     attachEventListeners();
     setupColumnDropTargets();
+
+    // 3. Load Sites, Requisitions and Requesters (RLS Scoped)
     await loadSites();
     await fetchRequisitions();
+    await loadRequesters();
+
+    // 4. Connect Supabase Realtime WebSocket
     setupRealtimeSync();
   }
 

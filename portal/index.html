@@ -50,7 +50,7 @@
       </div>
       <div class="flex items-center space-x-2 text-xs text-slate-500 font-mono">
         <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span class="font-medium text-slate-600">EDGE CLOUD ACTIVE</span>
+        <span class="font-medium text-slate-600">MULTI-TENANT SECURE</span>
       </div>
     </div>
   </header>
@@ -65,7 +65,7 @@
             <i data-lucide="shield-check" class="w-7 h-7"></i>
           </div>
           <h1 class="text-xl font-bold tracking-tight text-slate-900">Operational Portal Access</h1>
-          <p class="text-xs text-slate-500 mt-1">Field Requisitions &amp; Procurement Pipeline</p>
+          <p class="text-xs text-slate-500 mt-1">Multi-Tenant Field Requisitions &amp; Procurement Pipeline</p>
         </div>
 
         <!-- Alert Notification Box -->
@@ -85,7 +85,8 @@
                 type="email"
                 id="email"
                 required
-                placeholder="ops@company.co.za"
+                autocomplete="username"
+                placeholder="ops@apexops.co.za"
                 class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all shadow-2xs"
               />
             </div>
@@ -103,6 +104,7 @@
                 type="password"
                 id="password"
                 required
+                autocomplete="current-password"
                 placeholder="••••••••••••"
                 class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all shadow-2xs"
               />
@@ -112,35 +114,15 @@
           <button
             type="submit"
             id="signInBtn"
-            class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-all duration-150 flex items-center justify-center space-x-2 shadow-xs"
+            class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-all duration-150 flex items-center justify-center space-x-2 shadow-xs cursor-pointer"
           >
             <span id="signInText">Sign In to Dashboard</span>
             <i data-lucide="arrow-right" class="w-4 h-4"></i>
           </button>
         </form>
 
-        <div class="relative my-6">
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-slate-200"></div>
-          </div>
-          <div class="relative flex justify-center text-xs uppercase">
-            <span class="bg-white px-3 text-slate-400 font-mono text-[10px]">Evaluation Session</span>
-          </div>
-        </div>
-
-        <!-- Rapid Prototyping Demo Session Bypass -->
-        <button
-          type="button"
-          id="demoBypassBtn"
-          class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-medium rounded-lg text-xs transition-all flex items-center justify-center space-x-2 group shadow-2xs"
-        >
-          <i data-lucide="zap" class="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform"></i>
-          <span>Launch Demo Session (Bypass Auth)</span>
-        </button>
-
-        <p class="text-[11px] text-center text-slate-400 mt-5">
-          Tenant: <span class="font-semibold text-slate-600">Apex Industrial Ops</span> &bull; 
-          <span class="font-mono text-emerald-600">Ceres Operations</span>
+        <p class="text-[11px] text-center text-slate-400 mt-6 pt-4 border-t border-slate-100">
+          Authorized personnel only. Access strictly scoped to assigned facility tenant via PostgreSQL Row-Level Security.
         </p>
       </div>
     </div>
@@ -157,7 +139,7 @@
         <span>&bull;</span>
         <span class="text-slate-500">Conversational Tracking</span>
         <span>&bull;</span>
-        <span class="text-slate-500">Meta Cloud Webhooks</span>
+        <span class="text-slate-500">Row-Level Security</span>
       </div>
     </div>
   </footer>
@@ -167,7 +149,6 @@
 
     const authForm = document.getElementById('authForm');
     const authAlert = document.getElementById('authAlert');
-    const demoBypassBtn = document.getElementById('demoBypassBtn');
     const signInBtn = document.getElementById('signInBtn');
     const signInText = document.getElementById('signInText');
 
@@ -181,29 +162,32 @@
       authAlert.textContent = message;
     }
 
-    // Auto-redirect if already in demo session or valid Supabase session
+    // Auto-redirect if valid active session exists
     (async function checkExistingSession() {
-      if (AppConfig.isDemoSession()) {
-        window.location.href = 'requisitions.html';
-        return;
-      }
       const client = AppConfig.getSupabase();
-      if (client) {
+      if (!client) return;
+
+      try {
         const { data: { session } } = await client.auth.getSession();
-        if (session) {
-          window.location.href = 'requisitions.html';
+        if (session && session.user) {
+          const { data: profile } = await client
+            .from('user_profiles')
+            .select('id, full_name, role, is_active, company_id, company:companies(id, name, company_code)')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+
+          if (profile && profile.is_active) {
+            AppConfig.setStoredUserProfile(profile);
+            window.location.replace('requisitions.html');
+          } else {
+            await client.auth.signOut();
+            AppConfig.clearSession();
+          }
         }
+      } catch (err) {
+        console.warn('Session check check failed:', err);
       }
     })();
-
-    // Handle Demo Bypass
-    demoBypassBtn.addEventListener('click', () => {
-      AppConfig.setDemoSession(true);
-      showAlert('Starting verified demo session...', 'success');
-      setTimeout(() => {
-        window.location.href = 'requisitions.html';
-      }, 250);
-    });
 
     // Handle Supabase Auth Sign In
     authForm.addEventListener('submit', async (e) => {
@@ -232,14 +216,42 @@
           showAlert(`Authentication failed: ${error.message}`);
           signInBtn.disabled = false;
           signInText.textContent = 'Sign In to Dashboard';
-        } else {
-          AppConfig.setDemoSession(false);
-          localStorage.setItem('sc_user_email', data.user.email);
-          showAlert('Authentication successful. Redirecting...', 'success');
-          setTimeout(() => {
-            window.location.href = 'requisitions.html';
-          }, 350);
+          return;
         }
+
+        // Fetch user profile linked to tenant
+        const { data: profile, error: profileErr } = await client
+          .from('user_profiles')
+          .select('id, full_name, role, phone_number, is_active, company_id, company:companies(id, name, company_code)')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+
+        if (profileErr) {
+          console.error('Failed to resolve profile:', profileErr);
+          await client.auth.signOut();
+          AppConfig.clearSession();
+          showAlert('Failed to load user tenant profile. Please contact support.');
+          signInBtn.disabled = false;
+          signInText.textContent = 'Sign In to Dashboard';
+          return;
+        }
+
+        if (!profile || !profile.is_active) {
+          await client.auth.signOut();
+          AppConfig.clearSession();
+          showAlert('Account is not assigned to an active facility or tenant. Access denied.');
+          signInBtn.disabled = false;
+          signInText.textContent = 'Sign In to Dashboard';
+          return;
+        }
+
+        // Active profile confirmed
+        AppConfig.setStoredUserProfile(profile);
+        showAlert('Authentication successful. Redirecting...', 'success');
+        setTimeout(() => {
+          window.location.replace('requisitions.html');
+        }, 300);
+
       } catch (err) {
         showAlert(`Unexpected error: ${err.message}`);
         signInBtn.disabled = false;

@@ -1,6 +1,7 @@
 /**
  * config.js
- * Supabase configuration and session utilities for Supply Conduit Office Portal
+ * Supabase configuration and session context utilities for Supply Conduit Office Portal
+ * Adheres strictly to ADR-0005 multi-tenant isolation and fail-closed security.
  */
 
 (function (window) {
@@ -8,12 +9,11 @@
   const DEFAULT_SUPABASE_URL = "https://wtaewaeqmcqrwradlncj.supabase.co";
   const DEFAULT_SUPABASE_ANON_KEY =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0YWV3YWVxbWNxcndyYWRsbmNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2ODc1OTUsImV4cCI6MjEwNjI2MzU5NX0.E2CPpA9_UajhtHtpYsnjRWVnj5nrEk2HuFnx7bWikdw";
-  const DEFAULT_COMPANY_ID = "00000000-0000-0000-0000-000000000001";
 
-  // Allow runtime override via localStorage if configured in settings
-  const SUPABASE_URL = localStorage.getItem("sc_supabase_url") || DEFAULT_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = localStorage.getItem("sc_supabase_anon_key") || DEFAULT_SUPABASE_ANON_KEY;
-  const COMPANY_ID = localStorage.getItem("sc_company_id") || DEFAULT_COMPANY_ID;
+  // Host-based switching or runtime overrides
+  const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const SUPABASE_URL = (isLocal && localStorage.getItem("sc_supabase_url")) || DEFAULT_SUPABASE_URL;
+  const SUPABASE_ANON_KEY = (isLocal && localStorage.getItem("sc_supabase_anon_key")) || DEFAULT_SUPABASE_ANON_KEY;
 
   let supabaseClient = null;
 
@@ -27,37 +27,41 @@
         auth: {
           persistSession: true,
           autoRefreshToken: true,
+          detectSessionInUrl: true,
         },
       });
     }
     return supabaseClient;
   }
 
-  function isDemoSession() {
-    return localStorage.getItem("sc_demo_session") === "true";
-  }
-
-  function setDemoSession(enabled) {
-    if (enabled) {
-      localStorage.setItem("sc_demo_session", "true");
-      localStorage.setItem("sc_user_email", "buyer.relief@apexops.co.za");
-    } else {
-      localStorage.removeItem("sc_demo_session");
-      localStorage.removeItem("sc_user_email");
+  function getStoredUserProfile() {
+    try {
+      const data = localStorage.getItem("sc_user_profile");
+      return data ? JSON.parse(data) : null;
+    } catch (_) {
+      return null;
     }
   }
 
-  function getActiveUserEmail() {
-    return localStorage.getItem("sc_user_email") || "admin@apexops.co.za";
+  function setStoredUserProfile(profile) {
+    if (profile) {
+      localStorage.setItem("sc_user_profile", JSON.stringify(profile));
+    } else {
+      localStorage.removeItem("sc_user_profile");
+    }
+  }
+
+  function clearSession() {
+    localStorage.removeItem("sc_user_profile");
+    localStorage.removeItem("sc_demo_session");
   }
 
   window.AppConfig = {
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
-    COMPANY_ID,
     getSupabase,
-    isDemoSession,
-    setDemoSession,
-    getActiveUserEmail,
+    getStoredUserProfile,
+    setStoredUserProfile,
+    clearSession,
   };
 })(typeof window !== "undefined" ? window : globalThis);

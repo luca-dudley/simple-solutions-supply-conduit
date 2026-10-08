@@ -1,5 +1,5 @@
 # Live Supabase Schema Manifest
-> **Last Synchronized:** 2026-10-05 17:32:38 UTC
+> **Last Synchronized:** 2026-10-08 11:19:22 UTC
 > **Source:** Remote Supabase Instance via pg_dump (Direct Connection)
 
 ---
@@ -11,7 +11,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict xo9x3CfanpgMShFEJtHRatMZs9koanWkYGobtlLWmNRyhpZs5e5cP1Eb0NxsmZd
+\restrict nZfbCWlm4mhcH8uFb29l6mT6FGagxJMECKAP0wKZRV7w6XeCFklXXSsrjYOgjKW
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
@@ -64,6 +64,18 @@ CREATE TYPE public.urgency_level AS ENUM (
     'ROUTINE',
     'URGENT',
     'CRITICAL_BREAKDOWN'
+);
+
+
+--
+-- Name: user_role; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.user_role AS ENUM (
+    'admin',
+    'buyer',
+    'dispatcher',
+    'viewer'
 );
 
 
@@ -137,9 +149,23 @@ $$;
 --
 
 CREATE FUNCTION public.current_user_company_id() RETURNS uuid
-    LANGUAGE plpgsql STABLE
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
     AS $$
+DECLARE
+    v_company_id uuid;
 BEGIN
+    -- 1. Primary: Resolve company from user_profiles table using authenticated UID
+    SELECT company_id INTO v_company_id
+    FROM public.user_profiles
+    WHERE user_id = auth.uid() AND is_active = true
+    LIMIT 1;
+
+    IF v_company_id IS NOT NULL THEN
+        RETURN v_company_id;
+    END IF;
+
+    -- 2. Secondary: Fallback to JWT app_metadata claim if set
     RETURN NULLIF(current_setting('request.jwt.claims', true)::jsonb -> 'app_metadata' ->> 'company_id', '')::uuid;
 EXCEPTION
     WHEN OTHERS THEN
@@ -194,8 +220,16 @@ CREATE TABLE public.companies (
     timezone text DEFAULT 'Africa/Johannesburg'::text NOT NULL,
     settings jsonb DEFAULT '{"require_zone": false, "duplicate_window_days": 7}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    company_code character varying(6) NOT NULL
 );
+
+
+--
+-- Name: COLUMN companies.company_code; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.companies.company_code IS 'Unique 6-character uppercase alphanumeric code used by field requesters for zero-touch farm onboarding.';
 
 
 --
@@ -307,6 +341,23 @@ CREATE TABLE public.sites (
 
 
 --
+-- Name: user_profiles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_profiles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    company_id uuid NOT NULL,
+    full_name text NOT NULL,
+    role public.user_role DEFAULT 'buyer'::public.user_role NOT NULL,
+    phone_number character varying(20),
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+
+--
 -- Name: zones; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -409,6 +460,14 @@ ALTER TABLE ONLY public.sites
 
 
 --
+-- Name: user_profiles uq_user_profiles_user; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT uq_user_profiles_user UNIQUE (user_id);
+
+
+--
 -- Name: zones uq_zones_site_name; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -417,11 +476,26 @@ ALTER TABLE ONLY public.zones
 
 
 --
+-- Name: user_profiles user_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: zones zones_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.zones
     ADD CONSTRAINT zones_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_companies_company_code_upper; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_companies_company_code_upper ON public.companies USING btree (upper((company_code)::text));
 
 
 --
@@ -474,6 +548,34 @@ CREATE INDEX idx_requisitions_status ON public.requisitions USING btree (status)
 
 
 --
+-- Name: idx_user_profiles_company_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_profiles_company_id ON public.user_profiles USING btree (company_id);
+
+
+--
+-- Name: idx_user_profiles_user_company; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_user_profiles_user_company ON public.user_profiles USING btree (user_id, company_id);
+
+
+--
+-- Name: uq_requesters_active_phone; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_requesters_active_phone ON public.requesters USING btree (phone_number) WHERE (is_active = true);
+
+
+--
+-- Name: INDEX uq_requesters_active_phone; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON INDEX public.uq_requesters_active_phone IS 'Enforces single-tenant phone routing on active field workers across the shared WhatsApp bot number.';
+
+
+--
 -- Name: requisitions trg_assign_po_number_insert; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -506,6 +608,13 @@ CREATE TRIGGER trg_generate_requisition_ref BEFORE INSERT ON public.requisitions
 --
 
 CREATE TRIGGER trg_requisitions_updated_at BEFORE UPDATE ON public.requisitions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: user_profiles trg_user_profiles_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_user_profiles_updated_at BEFORE UPDATE ON public.user_profiles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
@@ -589,107 +698,27 @@ ALTER TABLE ONLY public.sites
 
 
 --
+-- Name: user_profiles user_profiles_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_profiles user_profiles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_profiles
+    ADD CONSTRAINT user_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: zones zones_site_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.zones
     ADD CONSTRAINT zones_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE CASCADE;
-
-
---
--- Name: companies Allow modifications to companies; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow modifications to companies" ON public.companies USING (((public.current_user_company_id() IS NULL) OR (id = public.current_user_company_id()))) WITH CHECK (((public.current_user_company_id() IS NULL) OR (id = public.current_user_company_id())));
-
-
---
--- Name: requesters Allow modifications to requesters; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow modifications to requesters" ON public.requesters USING (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id()))) WITH CHECK (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id())));
-
-
---
--- Name: requisition_items Allow modifications to requisition_items; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow modifications to requisition_items" ON public.requisition_items USING (((public.current_user_company_id() IS NULL) OR (requisition_id IN ( SELECT requisitions.id
-   FROM public.requisitions
-  WHERE (requisitions.company_id = public.current_user_company_id()))))) WITH CHECK (((public.current_user_company_id() IS NULL) OR (requisition_id IN ( SELECT requisitions.id
-   FROM public.requisitions
-  WHERE (requisitions.company_id = public.current_user_company_id())))));
-
-
---
--- Name: requisitions Allow modifications to requisitions; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow modifications to requisitions" ON public.requisitions USING (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id()))) WITH CHECK (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id())));
-
-
---
--- Name: sites Allow modifications to sites; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow modifications to sites" ON public.sites USING (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id()))) WITH CHECK (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id())));
-
-
---
--- Name: zones Allow modifications to zones; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow modifications to zones" ON public.zones USING (((public.current_user_company_id() IS NULL) OR (site_id IN ( SELECT sites.id
-   FROM public.sites
-  WHERE (sites.company_id = public.current_user_company_id()))))) WITH CHECK (((public.current_user_company_id() IS NULL) OR (site_id IN ( SELECT sites.id
-   FROM public.sites
-  WHERE (sites.company_id = public.current_user_company_id())))));
-
-
---
--- Name: companies Allow read access to companies; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow read access to companies" ON public.companies FOR SELECT USING (((public.current_user_company_id() IS NULL) OR (id = public.current_user_company_id())));
-
-
---
--- Name: requesters Allow read access to requesters; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow read access to requesters" ON public.requesters FOR SELECT USING (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id())));
-
-
---
--- Name: requisition_items Allow read access to requisition_items; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow read access to requisition_items" ON public.requisition_items FOR SELECT USING (((public.current_user_company_id() IS NULL) OR (requisition_id IN ( SELECT requisitions.id
-   FROM public.requisitions
-  WHERE (requisitions.company_id = public.current_user_company_id())))));
-
-
---
--- Name: requisitions Allow read access to requisitions; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow read access to requisitions" ON public.requisitions FOR SELECT USING (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id())));
-
-
---
--- Name: sites Allow read access to sites; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow read access to sites" ON public.sites FOR SELECT USING (((public.current_user_company_id() IS NULL) OR (company_id = public.current_user_company_id())));
-
-
---
--- Name: zones Allow read access to zones; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY "Allow read access to zones" ON public.zones FOR SELECT USING (((public.current_user_company_id() IS NULL) OR (site_id IN ( SELECT sites.id
-   FROM public.sites
-  WHERE (sites.company_id = public.current_user_company_id())))));
 
 
 --
@@ -699,10 +728,38 @@ CREATE POLICY "Allow read access to zones" ON public.zones FOR SELECT USING (((p
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: companies companies_tenant_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY companies_tenant_select ON public.companies FOR SELECT TO authenticated USING ((id = public.current_user_company_id()));
+
+
+--
+-- Name: companies companies_tenant_update; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY companies_tenant_update ON public.companies FOR UPDATE TO authenticated USING ((id = public.current_user_company_id())) WITH CHECK ((id = public.current_user_company_id()));
+
+
+--
 -- Name: requesters; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
 ALTER TABLE public.requesters ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: requesters requesters_tenant_modify; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY requesters_tenant_modify ON public.requesters TO authenticated USING ((company_id = public.current_user_company_id())) WITH CHECK ((company_id = public.current_user_company_id()));
+
+
+--
+-- Name: requesters requesters_tenant_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY requesters_tenant_select ON public.requesters FOR SELECT TO authenticated USING ((company_id = public.current_user_company_id()));
+
 
 --
 -- Name: requisition_items; Type: ROW SECURITY; Schema: public; Owner: -
@@ -711,10 +768,44 @@ ALTER TABLE public.requesters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.requisition_items ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: requisition_items requisition_items_tenant_modify; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY requisition_items_tenant_modify ON public.requisition_items TO authenticated USING ((requisition_id IN ( SELECT requisitions.id
+   FROM public.requisitions
+  WHERE (requisitions.company_id = public.current_user_company_id())))) WITH CHECK ((requisition_id IN ( SELECT requisitions.id
+   FROM public.requisitions
+  WHERE (requisitions.company_id = public.current_user_company_id()))));
+
+
+--
+-- Name: requisition_items requisition_items_tenant_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY requisition_items_tenant_select ON public.requisition_items FOR SELECT TO authenticated USING ((requisition_id IN ( SELECT requisitions.id
+   FROM public.requisitions
+  WHERE (requisitions.company_id = public.current_user_company_id()))));
+
+
+--
 -- Name: requisitions; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
 ALTER TABLE public.requisitions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: requisitions requisitions_tenant_modify; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY requisitions_tenant_modify ON public.requisitions TO authenticated USING ((company_id = public.current_user_company_id())) WITH CHECK ((company_id = public.current_user_company_id()));
+
+
+--
+-- Name: requisitions requisitions_tenant_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY requisitions_tenant_select ON public.requisitions FOR SELECT TO authenticated USING ((company_id = public.current_user_company_id()));
+
 
 --
 -- Name: sites; Type: ROW SECURITY; Schema: public; Owner: -
@@ -723,15 +814,71 @@ ALTER TABLE public.requisitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sites ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: sites sites_tenant_modify; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY sites_tenant_modify ON public.sites TO authenticated USING ((company_id = public.current_user_company_id())) WITH CHECK ((company_id = public.current_user_company_id()));
+
+
+--
+-- Name: sites sites_tenant_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY sites_tenant_select ON public.sites FOR SELECT TO authenticated USING ((company_id = public.current_user_company_id()));
+
+
+--
+-- Name: user_profiles; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: user_profiles user_profiles_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY user_profiles_select ON public.user_profiles FOR SELECT TO authenticated USING (((user_id = auth.uid()) OR (company_id = public.current_user_company_id())));
+
+
+--
+-- Name: user_profiles user_profiles_update; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY user_profiles_update ON public.user_profiles FOR UPDATE TO authenticated USING (((user_id = auth.uid()) OR ((company_id = public.current_user_company_id()) AND (EXISTS ( SELECT 1
+   FROM public.user_profiles user_profiles_1
+  WHERE ((user_profiles_1.user_id = auth.uid()) AND (user_profiles_1.role = 'admin'::public.user_role))))))) WITH CHECK ((company_id = public.current_user_company_id()));
+
+
+--
 -- Name: zones; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
 ALTER TABLE public.zones ENABLE ROW LEVEL SECURITY;
 
 --
+-- Name: zones zones_tenant_modify; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY zones_tenant_modify ON public.zones TO authenticated USING ((site_id IN ( SELECT sites.id
+   FROM public.sites
+  WHERE (sites.company_id = public.current_user_company_id())))) WITH CHECK ((site_id IN ( SELECT sites.id
+   FROM public.sites
+  WHERE (sites.company_id = public.current_user_company_id()))));
+
+
+--
+-- Name: zones zones_tenant_select; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY zones_tenant_select ON public.zones FOR SELECT TO authenticated USING ((site_id IN ( SELECT sites.id
+   FROM public.sites
+  WHERE (sites.company_id = public.current_user_company_id()))));
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict xo9x3CfanpgMShFEJtHRatMZs9koanWkYGobtlLWmNRyhpZs5e5cP1Eb0NxsmZd
+\unrestrict nZfbCWlm4mhcH8uFb29l6mT6FGagxJMECKAP0wKZRV7w6XeCFklXXSsrjYOgjKW
 
 ```
