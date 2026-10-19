@@ -123,16 +123,16 @@ echo "=================================================================="
 # Check if secrets synchronization was requested
 if [[ "$SYNC_SECRETS" == "true" ]]; then
   echo "==> Synchronizing secrets from .env..."
-  npx supabase secrets set --env-file "$ENV_FILE" --project-ref "$PROJECT_REF"
+  npx --yes --package=supabase --package=@supabase/cli-linux-x64 supabase secrets set --env-file "$ENV_FILE" --project-ref "$PROJECT_REF"
 fi
 
 # 6. Execute Deployment via Supabase CLI
 if [[ "$TARGET" == "--all" || "$TARGET" == "all" ]]; then
   echo "==> Deploying ALL edge functions in supabase/functions/..."
-  npx supabase functions deploy --project-ref "$PROJECT_REF" --no-verify-jwt
+  npx --yes --package=supabase --package=@supabase/cli-linux-x64 supabase functions deploy --project-ref "$PROJECT_REF" --no-verify-jwt
 else
   echo "==> Deploying edge function '$TARGET'..."
-  npx supabase functions deploy "$TARGET" --project-ref "$PROJECT_REF" --no-verify-jwt
+  npx --yes --package=supabase --package=@supabase/cli-linux-x64 supabase functions deploy "$TARGET" --project-ref "$PROJECT_REF" --no-verify-jwt
 fi
 
 echo ""

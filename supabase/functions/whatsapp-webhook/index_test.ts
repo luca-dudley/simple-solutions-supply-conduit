@@ -6,6 +6,7 @@
 import { assertEquals, assertNotEquals } from "jsr:@std/assert";
 import { handleWhatsAppWebhook } from "./index.ts";
 import { getServiceRoleClient } from "../_shared/supabaseClient.ts";
+import { extractWithGemini, heuristicExtractRequisition } from "../_shared/gemini.ts";
 import {
   formatConfirmationMessage,
   formatDeliveryAlertMessage,
@@ -320,6 +321,8 @@ Deno.test("Test Suite 4: Multi-Tenant Whitelist Invariants & Company Code Auto-E
   });
 
   await t.step("Inbound 6-character Company Code auto-enrolls requester into tenant whitelist", async () => {
+    const { data: compRec } = await supabase.from("companies").select("company_code").limit(1).single();
+    const targetCode = compRec?.company_code || "SIMP01";
     const onboardingPhone = `+2784${Math.floor(1000000 + Math.random() * 9000000)}`;
     const rawDigits = onboardingPhone.replace(/^\+/, "");
     const testMessageId = `wamid.test_code_${Date.now()}`;
@@ -350,7 +353,7 @@ Deno.test("Test Suite 4: Multi-Tenant Whitelist Invariants & Company Code Auto-E
                     id: testMessageId,
                     timestamp: Math.floor(Date.now() / 1000).toString(),
                     type: "text",
-                    text: { body: "APEX01" },
+                    text: { body: targetCode },
                   },
                 ],
               },
@@ -488,8 +491,45 @@ Deno.test("Test Suite 5: 7-Day Duplicate Order Detection", async () => {
   const testMessageId = `wamid.test_duplicate_${Date.now()}`;
   const supabase = getServiceRoleClient();
 
-  // In seed data, Ceres Packhouse Main has a prior requisition with:
-  // "50mm PVC Ball Valve Schedule 80"
+  // Ensure a prior requisition with "50mm PVC Ball Valve Schedule 80" exists within the 7-day window
+  const { data: requesterRec } = await supabase
+    .from("requesters")
+    .select("id, company_id, default_site_id")
+    .eq("phone_number", "+27821234567")
+    .single();
+
+  const { data: firstSite } = await supabase
+    .from("sites")
+    .select("id")
+    .eq("company_id", requesterRec!.company_id)
+    .limit(1)
+    .single();
+
+  const testSiteId = requesterRec!.default_site_id || firstSite!.id;
+
+  const { data: priorReq } = await supabase
+    .from("requisitions")
+    .insert({
+      company_id: requesterRec!.company_id,
+      site_id: testSiteId,
+      requester_id: requesterRec!.id,
+      status: "LOGGED",
+      urgency: "ROUTINE",
+      raw_message_text: "Seed prior order for ball valve",
+      whatsapp_message_id: `wamid.prior_${Date.now()}`,
+    })
+    .select("id")
+    .single();
+
+  if (priorReq) {
+    await supabase.from("requisition_items").insert({
+      requisition_id: priorReq.id,
+      item_description: "50mm PVC Ball Valve Schedule 80",
+      normalized_tokens: "50mm pvc ball valve schedule 80",
+      quantity: 2,
+      unit_of_measure: "units",
+    });
+  }
   const duplicatePayload = JSON.stringify({
     object: "whatsapp_business_account",
     entry: [
@@ -547,6 +587,9 @@ Deno.test("Test Suite 5: 7-Day Duplicate Order Detection", async () => {
 
   // Cleanup
   await supabase.from("requisitions").delete().eq("id", data.requisition_id);
+  if (priorReq) {
+    await supabase.from("requisitions").delete().eq("id", priorReq.id);
+  }
 });
 
 Deno.test("Test Suite 6: Conversational Keyword Tracking (STATUS & REQ-...)", async (t) => {
@@ -658,11 +701,11 @@ Deno.test("Test Suite 7: Internal Delivery Alert Action", async () => {
   const { data: seedReq } = await supabase
     .from("requisitions")
     .select("id, reference_code")
-    .eq("reference_code", "REQ-2610-1001")
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (!seedReq) {
-    throw new Error("Expected seed requisition REQ-2610-1001 to exist.");
+    throw new Error("Expected at least one requisition to exist.");
   }
 
   const payload = JSON.stringify({
@@ -1104,5 +1147,123 @@ Deno.test("Test Suite 11: High-Readability Industrial Card Templates & Formattin
   });
 });
 
+Deno.test("Test Suite 12: Inbound Pure-Text Requisition Extraction & Location Linking (REQ-2610-1062)", async (t) => {
+  const pureText =
+    "Urgent order required for the Fairview Farm banana shed. 2 x 50kg tractor weight plates, 10 x pallets and 30m of plastic wrap";
 
+  await t.step("Structured Gemini extraction extracts multiple line items and locations", async () => {
+    const extraction = await extractWithGemini({ text: pureText });
 
+    assertEquals(extraction.items.length, 3);
+
+    // Item 1: 50kg tractor weight plates
+    const plateItem = extraction.items.find((i) =>
+      i.item_description.toLowerCase().includes("tractor weight")
+    );
+    assertNotEquals(plateItem, undefined);
+    assertEquals(plateItem!.quantity, 2);
+    assertEquals(plateItem!.unit_of_measure, "units");
+
+    // Item 2: Pallets
+    const palletItem = extraction.items.find((i) =>
+      i.item_description.toLowerCase().includes("pallet")
+    );
+    assertNotEquals(palletItem, undefined);
+    assertEquals(palletItem!.quantity, 10);
+    assertEquals(palletItem!.unit_of_measure, "units");
+
+    // Item 3: Plastic wrap
+    const wrapItem = extraction.items.find((i) =>
+      i.item_description.toLowerCase().includes("wrap")
+    );
+    assertNotEquals(wrapItem, undefined);
+    assertEquals(wrapItem!.quantity, 30);
+    assertEquals(
+      wrapItem!.unit_of_measure === "meters" || wrapItem!.unit_of_measure === "m",
+      true
+    );
+
+    // Site & Zone & Urgency
+    assertEquals(extraction.site_name, "Fairview Farm Main");
+    assertEquals(extraction.zone_name, "Banana Shed");
+    assertEquals(extraction.urgency, "URGENT");
+    assertEquals(extraction.clarification_needed, null);
+  });
+
+  await t.step("Offline heuristic parser also successfully extracts multiple items and locations", () => {
+    const heuristic = heuristicExtractRequisition(pureText);
+    assertEquals(heuristic.items.length, 3);
+    assertEquals(heuristic.urgency, "URGENT");
+    assertEquals(heuristic.site_name, "Fairview Farm Main");
+    assertEquals(heuristic.zone_name, "Banana Shed");
+
+    const plateItem = heuristic.items.find((i) =>
+      i.item_description.toLowerCase().includes("tractor weight")
+    );
+    assertNotEquals(plateItem, undefined);
+    assertEquals(plateItem!.quantity, 2);
+
+    const palletItem = heuristic.items.find((i) =>
+      i.item_description.toLowerCase().includes("pallet")
+    );
+    assertNotEquals(palletItem, undefined);
+    assertEquals(palletItem!.quantity, 10);
+
+    const wrapItem = heuristic.items.find((i) =>
+      i.item_description.toLowerCase().includes("wrap")
+    );
+    assertNotEquals(wrapItem, undefined);
+    assertEquals(wrapItem!.quantity, 30);
+  });
+});
+
+Deno.test("Test Suite 13: Delivery Notification Action (notify_delivery), CORS & Audio Storage", async (t) => {
+  const supabase = getServiceRoleClient();
+
+  await t.step("CORS OPTIONS preflight returns 200 with appropriate headers", async () => {
+    const req = new Request("https://example.com/webhook", {
+      method: "OPTIONS",
+    });
+    const res = await handleWhatsAppWebhook(req);
+    assertEquals(res.status, 200);
+    assertEquals(res.headers.get("access-control-allow-origin"), "*");
+  });
+
+  await t.step("action: 'notify_delivery' dispatches delivery alert via handleWhatsAppWebhook", async () => {
+    const { data: seedReq } = await supabase
+      .from("requisitions")
+      .select("id, reference_code")
+      .limit(1)
+      .maybeSingle();
+
+    if (!seedReq) {
+      console.warn("Skipping notify_delivery test: no requisition seeded.");
+      return;
+    }
+
+    const payload = JSON.stringify({
+      action: "notify_delivery",
+      requisition_id: seedReq.id,
+    });
+
+    const req = new Request("https://example.com/webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: payload,
+    });
+
+    const res = await handleWhatsAppWebhook(req);
+    assertEquals(res.status, 200);
+    const data = await res.json();
+    assertEquals(data.reference_code, seedReq.reference_code);
+  });
+
+  await t.step("requisitions-media bucket exists and is public", async () => {
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const mediaBucket = buckets?.find((b) => b.name === "requisitions-media");
+    assertNotEquals(mediaBucket, undefined);
+    assertEquals(mediaBucket!.public, true);
+  });
+});

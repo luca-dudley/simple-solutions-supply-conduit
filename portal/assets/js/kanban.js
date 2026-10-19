@@ -42,28 +42,40 @@
     status: "ALL",
   };
 
-  // Top Nav & Auth DOM Elements
-  const connectionPill = document.getElementById("connectionStatusPill");
-  const connectionDot = document.getElementById("connectionDot");
-  const connectionText = document.getElementById("connectionText");
+  // Top Nav & Auth DOM Elements (The Vault Executive Masthead)
+  const userProfileBtn = document.getElementById("userProfileBtn");
+  const profileDropdownMenu = document.getElementById("profileDropdownMenu");
+  const dropdownUserName = document.getElementById("dropdownUserName");
   const userNameSpan = document.getElementById("userNameSpan");
   const userRoleBadge = document.getElementById("userRoleBadge");
   const userCompanySpan = document.getElementById("userCompanySpan");
   const signOutBtn = document.getElementById("signOutBtn");
   const openTeamModalBtn = document.getElementById("openTeamModalBtn");
   const navTeamCountBadge = document.getElementById("navTeamCountBadge");
+  const openSitesOverviewBtn = document.getElementById("openSitesOverviewBtn");
+  const sitesModal = document.getElementById("sitesModal");
+  const closeSitesModalBtn = document.getElementById("closeSitesModalBtn");
+  const closeSitesModalFooterBtn = document.getElementById("closeSitesModalFooterBtn");
+  const sitesListContainer = document.getElementById("sitesListContainer");
+  const sitesTotalCount = document.getElementById("sitesTotalCount");
 
-  // Kanban Filter & Control Elements
-  const siteFilter = document.getElementById("siteFilter");
-  const urgencyFilter = document.getElementById("urgencyFilter");
-  const unassignedFilter = document.getElementById("unassignedFilter");
-  const duplicatesOnlyFilter = document.getElementById("duplicatesOnlyFilter");
-  const showArchivedClosedToggle = document.getElementById("showArchivedClosedToggle");
-  const searchInput = document.getElementById("searchInput");
+  // Legacy/Optional connection & relief elements
+  const connectionPill = document.getElementById("connectionStatusPill");
+  const connectionDot = document.getElementById("connectionDot");
+  const connectionText = document.getElementById("connectionText");
   const reliefToggleBtn = document.getElementById("reliefToggleBtn");
   const reliefBanner = document.getElementById("reliefBanner");
   const dismissReliefBannerBtn = document.getElementById("dismissReliefBannerBtn");
   const quickClaimUnassignedBtn = document.getElementById("quickClaimUnassignedBtn");
+
+  // Kanban Filter & Control Elements
+  const searchInput = document.getElementById("searchInput");
+  const siteFilter = document.getElementById("siteFilter");
+  const urgencyFilter = document.getElementById("urgencyFilter");
+  const viewFilter = document.getElementById("viewFilter");
+  const unassignedFilter = document.getElementById("unassignedFilter");
+  const duplicatesOnlyFilter = document.getElementById("duplicatesOnlyFilter");
+  const showArchivedClosedToggle = document.getElementById("showArchivedClosedToggle");
   const statsTotalCount = document.getElementById("statsTotalCount");
 
   // Requisition Inspection Modal Elements
@@ -76,7 +88,9 @@
   const modalRequesterName = document.getElementById("modalRequesterName");
   const modalCreatedAt = document.getElementById("modalCreatedAt");
   const modalRawText = document.getElementById("modalRawText");
+  const modalRawTextLabel = document.getElementById("modalRawTextLabel");
   const modalAudioSection = document.getElementById("modalAudioSection");
+  const modalAudioPlayer = document.getElementById("modalAudioPlayer");
   const modalPlayAudioBtn = document.getElementById("modalPlayAudioBtn");
   const modalDuplicateWarning = document.getElementById("modalDuplicateWarning");
   const modalDuplicateRef = document.getElementById("modalDuplicateRef");
@@ -96,6 +110,7 @@
   const teamModal = document.getElementById("teamModal");
   const closeTeamModalBtn = document.getElementById("closeTeamModalBtn");
   const teamCompanyCode = document.getElementById("teamCompanyCode");
+  const teamModalCompanyCode = document.getElementById("teamModalCompanyCode");
   const teamTotalCount = document.getElementById("teamTotalCount");
   const teamActiveCount = document.getElementById("teamActiveCount");
   const teamSearchInput = document.getElementById("teamSearchInput");
@@ -103,6 +118,7 @@
   const teamStatusFilter = document.getElementById("teamStatusFilter");
   const teamTableBody = document.getElementById("teamTableBody");
   const downloadTemplateBtn = document.getElementById("downloadTemplateBtn");
+  const downloadCsvTemplateBtn = document.getElementById("downloadCsvTemplateBtn");
   const openAddRequesterBtn = document.getElementById("openAddRequesterBtn");
   const openBatchCsvBtn = document.getElementById("openBatchCsvBtn");
 
@@ -227,27 +243,29 @@
   }
 
   /**
-   * Update realtime connection status badge
+   * Update realtime connection status badge (The Vault quiet indicator)
    */
   function updateConnectionStatus(status) {
+    if (!connectionDot || !connectionText || !connectionPill) return;
+
     if (status === "SUBSCRIBED") {
-      connectionDot.className = "w-2 h-2 rounded-full bg-emerald-500";
-      connectionText.textContent = "Live Realtime Sync";
-      connectionText.className = "text-emerald-700 font-medium";
+      connectionDot.className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+      connectionText.textContent = "Realtime Active";
+      connectionText.className = "text-xs text-slate-600 font-medium";
       connectionPill.className =
-        "flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono";
+        "flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs shadow-2xs";
     } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
       connectionDot.className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
       connectionText.textContent = "Reconnecting...";
-      connectionText.className = "text-red-700 font-medium";
+      connectionText.className = "text-xs text-red-700 font-medium";
       connectionPill.className =
-        "flex items-center space-x-2 px-3 py-1 rounded-full bg-red-50 border border-red-200 text-xs font-mono";
+        "flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-xs shadow-2xs";
     } else {
       connectionDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
       connectionText.textContent = "Connecting Realtime...";
-      connectionText.className = "text-slate-600 font-medium";
+      connectionText.className = "text-xs text-slate-600 font-medium";
       connectionPill.className =
-        "flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-mono";
+        "flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-xs shadow-2xs";
     }
   }
 
@@ -300,14 +318,37 @@
       currentUserProfile = profile;
       AppConfig.setStoredUserProfile(profile);
 
-      // Populate User Nav Card
-      userNameSpan.textContent = profile.full_name || session.user.email;
-      userRoleBadge.textContent = profile.role || "buyer";
+      // Populate User Nav Card & Dropdown Profile
+      if (userNameSpan) {
+        userNameSpan.textContent = profile.full_name || session.user.email;
+      }
+      if (dropdownUserName) {
+        dropdownUserName.textContent = profile.full_name || session.user.email;
+      }
+      if (userRoleBadge) {
+        userRoleBadge.textContent = profile.role || "buyer";
+      }
       const compName = profile.company?.name || "Facility";
-      const compCode = profile.company?.company_code || "CODE";
-      userCompanySpan.textContent = `${compName} • ${compCode}`;
+      const compCode = profile.company?.company_code || "SIMP01";
+      if (userCompanySpan) {
+        userCompanySpan.textContent = `${compName} • ${compCode}`;
+      }
       if (teamCompanyCode) {
         teamCompanyCode.textContent = compCode;
+      }
+      if (teamModalCompanyCode) {
+        teamModalCompanyCode.textContent = compCode;
+      }
+
+      // Populate Avatar Initials (The Vault Profile Design)
+      const userAvatarInitials = document.getElementById("userAvatarInitials");
+      if (userAvatarInitials) {
+        const name = profile.full_name || session.user.email || "?";
+        const parts = name.trim().split(/\s+/);
+        const initials = parts.length >= 2
+          ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+          : name.slice(0, 2).toUpperCase();
+        userAvatarInitials.textContent = initials;
       }
 
       // Listen for reactive logout or token expiry
@@ -537,8 +578,8 @@
 
       if (reqsInCol.length === 0) {
         colEl.innerHTML = `
-          <div class="h-28 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
-            <span class="font-medium">No requisitions</span>
+          <div class="h-28 flex flex-col items-center justify-center border-2 border-dashed border-slate-200/80 rounded-xl text-slate-400 text-xs">
+            <span class="font-medium text-slate-400">No requisitions</span>
           </div>
         `;
         return;
@@ -560,27 +601,27 @@
   function createCardElement(req) {
     const card = document.createElement("div");
     card.className =
-      "kanban-card bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all cursor-grab active:cursor-grabbing space-y-2.5 relative group";
+      "kanban-card bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing space-y-2.5 relative group";
     card.setAttribute("draggable", "true");
     card.dataset.id = req.id;
     card.dataset.status = req.status;
 
-    // Urgency styling
+    // Urgency styling (The Vault Enterprise Pills)
     let urgencyBadge = "";
     if (req.urgency === "CRITICAL_BREAKDOWN") {
       urgencyBadge =
-        '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-800 border border-red-200 flex items-center space-x-1"><i data-lucide="flame" class="w-3 h-3"></i><span>Breakdown</span></span>';
+        '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 flex items-center space-x-1"><i data-lucide="flame" class="w-3 h-3"></i><span>Breakdown</span></span>';
     } else if (req.urgency === "URGENT") {
       urgencyBadge =
-        '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">Urgent</span>';
+        '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">Urgent</span>';
     } else {
       urgencyBadge =
-        '<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-100 text-slate-600 border border-slate-200">Routine</span>';
+        '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-slate-50 text-slate-600 border border-slate-200">Routine</span>';
     }
 
     // Duplicate badge
     const duplicateBadge = req.is_duplicate_suspect
-      ? '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-500 text-white flex items-center space-x-1 shadow-2xs" title="7-Day Duplicate Order Suspect"><i data-lucide="alert-triangle" class="w-3 h-3"></i><span>DUP</span></span>'
+      ? '<span class="px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500 text-white flex items-center space-x-1 shadow-2xs" title="7-Day Duplicate Order Suspect"><i data-lucide="alert-triangle" class="w-3 h-3"></i><span>DUP</span></span>'
       : "";
 
     // Items preview
@@ -595,7 +636,7 @@
       if (req.po_number) parts.push(`<span class="font-mono font-semibold">${req.po_number}</span>`);
       if (req.supplier_name) parts.push(`<span>${req.supplier_name}</span>`);
       poSupplierPill = `
-        <div class="text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-600 flex items-center space-x-1.5 truncate">
+        <div class="text-[11px] bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1 text-slate-600 flex items-center space-x-1.5 truncate">
           <i data-lucide="tag" class="w-3 h-3 text-slate-400 flex-shrink-0"></i>
           <span class="truncate">${parts.join(" &bull; ")}</span>
         </div>
@@ -610,7 +651,7 @@
 
     card.innerHTML = `
       <div class="flex items-center justify-between gap-1">
-        <span class="font-mono text-xs font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">${req.reference_code}</span>
+        <span class="font-mono text-xs font-bold text-slate-900 group-hover:text-slate-700 transition-colors">${req.reference_code}</span>
         <div class="flex items-center space-x-1.5">
           ${duplicateBadge}
           ${urgencyBadge}
@@ -706,6 +747,29 @@
     modalCreatedAt.textContent = new Date(req.created_at).toLocaleString();
     modalRawText.textContent = req.raw_message_text ? `"${req.raw_message_text}"` : '"No raw text content."';
 
+    // Audio Voice Note Player vs WhatsApp Text Card
+    const hasAudio = Boolean(req.audio_url && String(req.audio_url).trim() !== "");
+    if (modalAudioSection) {
+      if (hasAudio) {
+        modalAudioSection.classList.remove("hidden");
+        if (modalAudioPlayer) {
+          modalAudioPlayer.src = req.audio_url;
+        }
+      } else {
+        modalAudioSection.classList.add("hidden");
+        if (modalAudioPlayer) {
+          modalAudioPlayer.src = "";
+          modalAudioPlayer.pause();
+        }
+      }
+    }
+
+    if (modalRawTextLabel) {
+      modalRawTextLabel.textContent = hasAudio
+        ? "Field Voice Note Transcript:"
+        : (req.raw_message_text ? "WhatsApp Text Message:" : "Original Message:");
+    }
+
     // PO Badge
     if (req.po_number) {
       modalPoBadge.textContent = req.po_number;
@@ -714,16 +778,16 @@
       modalPoBadge.classList.add("hidden");
     }
 
-    // Urgency Badge
-    modalUrgencyBadge.className = "px-2 py-0.5 rounded text-xs font-bold uppercase ";
+    // Urgency Badge (The Vault Enterprise Pill)
+    modalUrgencyBadge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ";
     if (req.urgency === "CRITICAL_BREAKDOWN") {
-      modalUrgencyBadge.classList.add("bg-red-100", "text-red-800", "border", "border-red-200");
+      modalUrgencyBadge.classList.add("bg-red-50", "text-red-700", "border", "border-red-200");
       modalUrgencyBadge.textContent = "🔥 Breakdown";
     } else if (req.urgency === "URGENT") {
-      modalUrgencyBadge.classList.add("bg-amber-100", "text-amber-800", "border", "border-amber-200");
+      modalUrgencyBadge.classList.add("bg-amber-50", "text-amber-700", "border", "border-amber-200");
       modalUrgencyBadge.textContent = "⚠️ Urgent";
     } else {
-      modalUrgencyBadge.classList.add("bg-slate-100", "text-slate-600", "border", "border-slate-200");
+      modalUrgencyBadge.classList.add("bg-slate-100", "text-slate-700", "border", "border-slate-200");
       modalUrgencyBadge.textContent = "Routine";
     }
 
@@ -777,8 +841,15 @@
 
   function closeInspectionModal() {
     inspectionModal.classList.add("hidden");
+    if (modalAudioPlayer) {
+      modalAudioPlayer.pause();
+      modalAudioPlayer.src = "";
+    }
     selectedRequisition = null;
   }
+
+  // Alias openRequisitionModal to openInspectionModal for consistency
+  const openRequisitionModal = openInspectionModal;
 
   /**
    * Save Practical Operational Details from Inspection Modal
@@ -840,26 +911,23 @@
       // Trigger automated delivery alert edge function when order arrives on site
       if (newStatus === "DELIVERED_TO_SITE") {
         console.log(`[Delivery Alert] Triggering outbound notification for ${data.reference_code}...`);
-        fetch(`${AppConfig.SUPABASE_URL}/functions/v1/whatsapp-webhook`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${AppConfig.SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({
-            action: "delivery_alert",
-            requisition_id: reqId,
-          }),
-        })
-          .then((res) => res.json())
-          .then((resData) => {
-            console.log("[Delivery Alert] Dispatch response:", resData);
-            if (resData.success) {
+        supabase.functions
+          .invoke("whatsapp-webhook", {
+            body: {
+              action: "notify_delivery",
+              requisition_id: reqId,
+            },
+          })
+          .then(({ data: invokeData, error: invokeErr }) => {
+            if (invokeErr) {
+              console.error("Delivery notification failed:", invokeErr);
+            } else {
+              console.log("[Delivery Alert] Dispatch response:", invokeData);
               showToast("Delivery Alert Dispatched", `Sent WhatsApp arrival alert to requester (${data.reference_code})`, "info");
             }
           })
           .catch((err) => {
-            console.warn("[Delivery Alert] Edge function trigger warning:", err);
+            console.error("Delivery notification failed:", err);
           });
       }
 
@@ -994,12 +1062,12 @@
 
       const siteName = req.site?.name ? `${req.site.name} (${req.site.code})` : "— Dynamic";
       const statusPill = req.is_active
-        ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Active</span>'
-        : '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Deactivated</span>';
+        ? '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>'
+        : '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">Deactivated</span>';
 
       const toggleBtn = req.is_active
-        ? `<button data-action="toggle-status" data-id="${req.id}" data-active="true" class="px-2.5 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-all cursor-pointer">Deactivate</button>`
-        : `<button data-action="toggle-status" data-id="${req.id}" data-active="false" class="px-2.5 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-all cursor-pointer">Reactivate</button>`;
+        ? `<button data-action="toggle-status" data-id="${req.id}" data-active="true" class="px-3 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-xl transition-all cursor-pointer shadow-2xs">Deactivate</button>`
+        : `<button data-action="toggle-status" data-id="${req.id}" data-active="false" class="px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-xl transition-all cursor-pointer shadow-2xs">Reactivate</button>`;
 
       tr.innerHTML = `
         <td class="p-3 font-semibold text-slate-900">${req.name}</td>
@@ -1325,19 +1393,112 @@
   }
 
   /**
+   * Render Sites & Locations Overview List (The Vault Profile Flow)
+   */
+  function renderSitesList() {
+    if (!sitesListContainer) return;
+    sitesListContainer.innerHTML = "";
+    if (sitesTotalCount) {
+      sitesTotalCount.textContent = allSites.length.toString();
+    }
+    if (allSites.length === 0) {
+      sitesListContainer.innerHTML =
+        '<div class="p-6 text-center text-slate-400 italic">No registered operational sites found.</div>';
+      return;
+    }
+    allSites.forEach((site) => {
+      const row = document.createElement("div");
+      row.className = "p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors";
+      row.innerHTML = `
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
+            <i data-lucide="building" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h4 class="font-semibold text-slate-900">${site.name}</h4>
+            <p class="text-[11px] font-mono text-slate-400">Code: ${site.code}</p>
+          </div>
+        </div>
+        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          Active
+        </span>
+      `;
+      sitesListContainer.appendChild(row);
+    });
+    lucide.createIcons({ root: sitesListContainer });
+  }
+
+  /**
    * Attach All Event Listeners
    */
   function attachEventListeners() {
-    // Top Nav Modals & Controls
-    openTeamModalBtn.addEventListener("click", () => {
-      teamModal.classList.remove("hidden");
-      loadRequesters();
-      lucide.createIcons({ root: teamModal });
-    });
+    // Top Nav: Profile Dropdown Toggle & Click Outside Handling
+    if (userProfileBtn && profileDropdownMenu) {
+      userProfileBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isHidden = profileDropdownMenu.classList.contains("hidden");
+        profileDropdownMenu.classList.toggle("hidden");
+        userProfileBtn.setAttribute("aria-expanded", isHidden ? "true" : "false");
+        lucide.createIcons({ root: profileDropdownMenu });
+      });
 
-    closeTeamModalBtn.addEventListener("click", () => {
-      teamModal.classList.add("hidden");
-    });
+      document.addEventListener("click", (e) => {
+        const container = document.getElementById("profileDropdownContainer");
+        if (container && !container.contains(e.target)) {
+          profileDropdownMenu.classList.add("hidden");
+          userProfileBtn.setAttribute("aria-expanded", "false");
+        }
+      });
+    }
+
+    // Top Nav: Field Team Whitelist Modal
+    if (openTeamModalBtn) {
+      openTeamModalBtn.addEventListener("click", () => {
+        if (profileDropdownMenu) profileDropdownMenu.classList.add("hidden");
+        if (teamModalCompanyCode) {
+          teamModalCompanyCode.textContent = currentUserProfile?.company?.company_code || "SIMP01";
+        }
+        teamModal.classList.remove("hidden");
+        loadRequesters();
+        lucide.createIcons({ root: teamModal });
+      });
+    }
+
+    if (closeTeamModalBtn) {
+      closeTeamModalBtn.addEventListener("click", () => {
+        teamModal.classList.add("hidden");
+      });
+    }
+
+    // Top Nav: Sites & Locations Overview Modal
+    if (openSitesOverviewBtn && sitesModal) {
+      openSitesOverviewBtn.addEventListener("click", () => {
+        if (profileDropdownMenu) profileDropdownMenu.classList.add("hidden");
+        renderSitesList();
+        sitesModal.classList.remove("hidden");
+        lucide.createIcons({ root: sitesModal });
+      });
+    }
+
+    if (closeSitesModalBtn && sitesModal) {
+      closeSitesModalBtn.addEventListener("click", () => {
+        sitesModal.classList.add("hidden");
+      });
+    }
+
+    if (closeSitesModalFooterBtn && sitesModal) {
+      closeSitesModalFooterBtn.addEventListener("click", () => {
+        sitesModal.classList.add("hidden");
+      });
+    }
+
+    if (sitesModal) {
+      sitesModal.addEventListener("click", (e) => {
+        if (e.target === sitesModal) {
+          sitesModal.classList.add("hidden");
+        }
+      });
+    }
 
     // Add Requester Sub-modal
     openAddRequesterBtn.addEventListener("click", () => {
@@ -1370,7 +1531,12 @@
       batchImportModal.classList.add("hidden");
     });
 
-    downloadTemplateBtn.addEventListener("click", handleDownloadTemplate);
+    if (downloadTemplateBtn) {
+      downloadTemplateBtn.addEventListener("click", handleDownloadTemplate);
+    }
+    if (downloadCsvTemplateBtn) {
+      downloadCsvTemplateBtn.addEventListener("click", handleDownloadTemplate);
+    }
 
     chooseCsvBtn.addEventListener("click", () => {
       csvFileInput.click();
@@ -1397,6 +1563,7 @@
     });
 
     teamStatusFilter.addEventListener("change", (e) => {
+      teamStatusFilter.value = e.target.value;
       teamFilters.status = e.target.value;
       renderTeamTable();
     });
@@ -1413,55 +1580,110 @@
       }
     });
 
-    // Filter bar controls
-    siteFilter.addEventListener("change", (e) => {
-      filters.siteId = e.target.value;
-      renderBoard();
-    });
+    // Streamlined Filter bar controls
+    if (siteFilter) {
+      siteFilter.addEventListener("change", (e) => {
+        filters.siteId = e.target.value;
+        renderBoard();
+      });
+    }
 
-    urgencyFilter.addEventListener("change", (e) => {
-      filters.urgency = e.target.value;
-      renderBoard();
-    });
+    if (urgencyFilter) {
+      urgencyFilter.addEventListener("change", (e) => {
+        filters.urgency = e.target.value;
+        renderBoard();
+      });
+    }
 
-    unassignedFilter.addEventListener("change", (e) => {
-      filters.unassignedOnly = e.target.checked;
-      renderBoard();
-    });
+    // Consolidated View Filter Dropdown (ADR-0005 Minimalist Toolbar)
+    if (viewFilter) {
+      viewFilter.addEventListener("change", (e) => {
+        const val = e.target.value;
+        filters.unassignedOnly = val === "UNASSIGNED";
+        filters.duplicatesOnly = val === "DUPLICATES";
+        filters.showArchivedClosed = val === "ARCHIVED";
+        renderBoard();
+      });
+    }
 
-    duplicatesOnlyFilter.addEventListener("change", (e) => {
-      filters.duplicatesOnly = e.target.checked;
-      renderBoard();
-    });
+    // Legacy individual filter listeners (if present)
+    if (unassignedFilter) {
+      unassignedFilter.addEventListener("change", (e) => {
+        filters.unassignedOnly = e.target.checked;
+        renderBoard();
+      });
+    }
 
-    showArchivedClosedToggle.addEventListener("change", (e) => {
-      filters.showArchivedClosed = e.target.checked;
-      renderBoard();
-    });
+    if (duplicatesOnlyFilter) {
+      duplicatesOnlyFilter.addEventListener("change", (e) => {
+        filters.duplicatesOnly = e.target.checked;
+        renderBoard();
+      });
+    }
 
-    searchInput.addEventListener("input", (e) => {
-      filters.search = e.target.value.trim();
-      renderBoard();
-    });
+    if (showArchivedClosedToggle) {
+      showArchivedClosedToggle.addEventListener("change", (e) => {
+        filters.showArchivedClosed = e.target.checked;
+        renderBoard();
+      });
+    }
 
-    // Relief Triage Controls
-    reliefToggleBtn.addEventListener("click", () => {
-      reliefBanner.classList.toggle("hidden");
-    });
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        filters.search = e.target.value.trim();
+        renderBoard();
+      });
+    }
 
-    dismissReliefBannerBtn.addEventListener("click", () => {
-      reliefBanner.classList.add("hidden");
-    });
-
-    quickClaimUnassignedBtn.addEventListener("click", async () => {
-      const unassigned = allRequisitions.find((r) => !r.assigned_buyer_id && r.status === "LOGGED");
-      if (unassigned) {
-        openInspectionModal(unassigned);
-        showToast("Claimed Requisition", `Viewing unassigned order ${unassigned.reference_code}`, "info");
-      } else {
-        showToast("Queue Clean", "No unassigned logged orders currently waiting in queue.", "info");
+    // Global Keyboard Shortcuts (Escape to close dropdowns & modals)
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (profileDropdownMenu && !profileDropdownMenu.classList.contains("hidden")) {
+          profileDropdownMenu.classList.add("hidden");
+          if (userProfileBtn) userProfileBtn.setAttribute("aria-expanded", "false");
+        }
+        if (sitesModal && !sitesModal.classList.contains("hidden")) {
+          sitesModal.classList.add("hidden");
+        }
+        if (inspectionModal && !inspectionModal.classList.contains("hidden")) {
+          closeInspectionModal();
+        }
+        if (teamModal && !teamModal.classList.contains("hidden")) {
+          teamModal.classList.add("hidden");
+        }
+        if (batchImportModal && !batchImportModal.classList.contains("hidden")) {
+          batchImportModal.classList.add("hidden");
+        }
+        if (addRequesterModal && !addRequesterModal.classList.contains("hidden")) {
+          addRequesterModal.classList.add("hidden");
+        }
       }
     });
+
+    // Relief Triage Controls (Legacy / Safe guards)
+    if (reliefToggleBtn && reliefBanner) {
+      reliefToggleBtn.addEventListener("click", () => {
+        reliefBanner.classList.toggle("hidden");
+      });
+    }
+
+    if (dismissReliefBannerBtn && reliefBanner) {
+      dismissReliefBannerBtn.addEventListener("click", () => {
+        reliefBanner.classList.add("hidden");
+      });
+    }
+
+    if (quickClaimUnassignedBtn) {
+      quickClaimUnassignedBtn.addEventListener("click", async () => {
+        const unassigned = allRequisitions.find((r) => !r.assigned_buyer_id && r.status === "LOGGED");
+        if (unassigned) {
+          openInspectionModal(unassigned);
+          showToast("Claimed Requisition", `Viewing unassigned order ${unassigned.reference_code}`, "info");
+        } else {
+          showToast("Queue Clean", "No unassigned logged orders currently waiting in queue.", "info");
+        }
+      });
+    }
 
     // Inspection Modal Controls
     closeModalBtn.addEventListener("click", closeInspectionModal);
@@ -1483,30 +1705,35 @@
       closeInspectionModal();
     });
 
-    // Audio Voice Note Simulation Player
-    let isPlaying = false;
-    modalPlayAudioBtn.addEventListener("click", () => {
-      isPlaying = !isPlaying;
-      if (isPlaying) {
-        modalPlayAudioBtn.innerHTML = '<i data-lucide="pause" class="w-4 h-4"></i>';
-        modalPlayAudioBtn.classList.add("bg-emerald-200");
-        showToast("Audio Playback", "Playing field voice note...", "info");
-      } else {
-        modalPlayAudioBtn.innerHTML = '<i data-lucide="play" class="w-4 h-4 ml-0.5"></i>';
-        modalPlayAudioBtn.classList.remove("bg-emerald-200");
-      }
-      lucide.createIcons({ root: modalPlayAudioBtn });
-    });
+    // Audio Voice Note Simulation Player (if button exists)
+    if (modalPlayAudioBtn) {
+      let isPlaying = false;
+      modalPlayAudioBtn.addEventListener("click", () => {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+          modalPlayAudioBtn.innerHTML = '<i data-lucide="pause" class="w-4 h-4"></i>';
+          modalPlayAudioBtn.classList.add("bg-emerald-200");
+          showToast("Audio Playback", "Playing field voice note...", "info");
+        } else {
+          modalPlayAudioBtn.innerHTML = '<i data-lucide="play" class="w-4 h-4 ml-0.5"></i>';
+          modalPlayAudioBtn.classList.remove("bg-emerald-200");
+        }
+        lucide.createIcons({ root: modalPlayAudioBtn });
+      });
+    }
 
     // Sign Out
-    signOutBtn.addEventListener("click", async () => {
-      AppConfig.clearSession();
-      const client = AppConfig.getSupabase();
-      if (client) {
-        await client.auth.signOut();
-      }
-      window.location.replace("index.html");
-    });
+    if (signOutBtn) {
+      signOutBtn.addEventListener("click", async () => {
+        if (profileDropdownMenu) profileDropdownMenu.classList.add("hidden");
+        AppConfig.clearSession();
+        const client = AppConfig.getSupabase();
+        if (client) {
+          await client.auth.signOut();
+        }
+        window.location.replace("index.html");
+      });
+    }
   }
 
   /**

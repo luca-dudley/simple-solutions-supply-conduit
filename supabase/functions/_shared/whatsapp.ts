@@ -67,15 +67,15 @@ export async function verifyWhatsAppSignature(
 export async function downloadWhatsAppMedia(
   mediaId: string
 ): Promise<{ data: Uint8Array; mimeType: string } | null> {
-  const token = Deno.env.get("WHATSAPP_API_TOKEN");
+  const token = Deno.env.get("META_ACCESS_TOKEN") || Deno.env.get("WHATSAPP_API_TOKEN");
   if (!token) {
-    console.warn("[WhatsApp] WHATSAPP_API_TOKEN is not set; skipping media download.");
+    console.warn("[WhatsApp] META_ACCESS_TOKEN or WHATSAPP_API_TOKEN is not set; skipping media download.");
     return null;
   }
 
   try {
-    // Step 1: Retrieve media metadata and direct download URL
-    const metaRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+    // Step 1: Retrieve media metadata and direct download URL from Meta Graph API v21.0
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 

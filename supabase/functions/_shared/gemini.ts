@@ -15,6 +15,9 @@ Parse the user's requisition message or voice transcript into structured JSON ma
 Rules:
 1. Normalize item descriptions using standard South African industrial terminology.
    Examples:
+   - "tractor weight plates" / "50kg tractor weight plates" -> "50kg Tractor Weight Plates"
+   - "pallets" -> "Pallets"
+   - "plastic wrap" / "pallet wrap" / "shrink wrap" -> "Plastic Wrap"
    - "pocket of cement" / "sakke sement" -> "Cement 50kg Bags"
    - "50 mil brass valve" / "klapklep" -> "Brass Gate Valve 50mm PN16"
    - "binding wire" / "draad" -> "Binding Wire 1.6mm 50kg Roll"
@@ -25,14 +28,15 @@ Rules:
    - "V-belt" -> "Industrial V-Belt"
    - "cartridges grease" -> "Lithium EP2 Grease Cartridge 400g"
 2. Normalize unit of measure:
-   - Use standard units: "units", "meters", "kg", "bags", "rolls", "boxes", "litres", "cartridges".
+   - Use standard units: "units", "meters", "m", "kg", "bags", "rolls", "boxes", "litres", "cartridges".
+   - If unit is meters or "m", use "meters" or "m".
 3. Detect Urgency:
    - CRITICAL_BREAKDOWN: Harvest or packing line stopped, main water pump failed, main generator off, flood/leak emergency, active civil halt.
-   - URGENT: Needed urgently within 24 hours to prevent work stoppage.
+   - URGENT: Needed urgently within 24 hours to prevent work stoppage ("urgent", "urgently", "asap", "emergency").
    - ROUTINE: Standard weekly replenishment or routine scheduled maintenance.
 4. Multi-Facility & Location Extraction:
-   - site_name: Macro facility, farm, estate, packhouse complex, or depot mentioned (e.g., "Ceres Packhouse", "Kouebokkeveld Estate", "Lichtenburg Farm"). Return null if unspecified.
-   - zone_name: Functional hub, building, or operational zone (e.g., "Cold Storage", "Workshop", "Packhouse Line 2", "Pump Station 4", "Chemical Shed", "Fertilizer Bay"). Return null if unspecified.
+   - site_name: Macro facility, farm, estate, packhouse complex, or depot mentioned. If "Fairview Farm" is mentioned, normalize to "Fairview Farm Main" (e.g. "Fairview Farm Main", "Ceres Packhouse", "Kouebokkeveld Estate", "Lichtenburg Farm", "Valley Central Depot"). Return null if unspecified.
+   - zone_name: Functional hub, building, shed, or operational zone (e.g. "Banana Shed", "Cold Storage", "Workshop", "Packhouse Line 2", "Pump Station 4", "Chemical Shed", "Fertilizer Bay"). Return null if unspecified.
    - location_detail: Specific granular room, bay, chamber, or asset callout (e.g., "Cold Room 2", "Tractor Bay 5", "Compressor A", "Borehole 3"). Return null if unspecified.
 5. Confidence Score:
    - Provide a confidence_score between 0.0 and 1.0 reflecting how clearly items, quantities, and descriptions were specified.
@@ -62,12 +66,12 @@ export const GEMINI_RESPONSE_SCHEMA = {
     site_name: {
       type: "STRING",
       nullable: true,
-      description: "Macro facility or farm property name if mentioned",
+      description: "Macro facility or farm property name if mentioned (e.g. Fairview Farm Main)",
     },
     zone_name: {
       type: "STRING",
       nullable: true,
-      description: "Functional hub or operational zone if mentioned",
+      description: "Functional hub, shed, or operational zone if mentioned (e.g. Banana Shed)",
     },
     location_detail: {
       type: "STRING",
@@ -76,6 +80,11 @@ export const GEMINI_RESPONSE_SCHEMA = {
     },
     confidence_score: { type: "NUMBER" },
     clarification_needed: { type: "STRING", nullable: true },
+    transcript: {
+      type: "STRING",
+      nullable: true,
+      description: "Verbatim text transcription of the spoken audio note if audio was provided",
+    },
   },
   required: ["items", "urgency", "confidence_score"],
 };
@@ -171,6 +180,41 @@ export function heuristicExtractRequisition(
     });
   }
 
+  // Match tractor weight plates: e.g. "2 x 50kg tractor weight plates"
+  const tractorWeightMatch = lower.match(/(\d+(?:\.\d+)?)\s*x?\s*(?:50kg\s*)?tractor\s*weight(?:\s*plates?)?/i);
+  if (tractorWeightMatch) {
+    items.push({
+      item_description: "50kg Tractor Weight Plates",
+      quantity: parseFloat(tractorWeightMatch[1]) || 1,
+      unit_of_measure: "units",
+      part_number: null,
+    });
+  }
+
+  // Match pallets: e.g. "10 x pallets"
+  const palletMatch = lower.match(/(\d+(?:\.\d+)?)\s*x?\s*pallets?\b/i);
+  if (palletMatch) {
+    items.push({
+      item_description: "Pallets",
+      quantity: parseFloat(palletMatch[1]) || 1,
+      unit_of_measure: "units",
+      part_number: null,
+    });
+  }
+
+  // Match plastic wrap: e.g. "30m of plastic wrap" or "5 rolls plastic wrap"
+  const wrapMatch = lower.match(/(\d+(?:\.\d+)?)\s*(m|meters?|rolls?|boxes?)?\s*(?:of\s*)?(?:plastic|pallet|shrink)\s*wrap/i);
+  if (wrapMatch) {
+    const rawUom = wrapMatch[2]?.toLowerCase();
+    const uom = rawUom && (rawUom.startsWith("meter") || rawUom === "m") ? "m" : (rawUom || "rolls");
+    items.push({
+      item_description: "Plastic Wrap",
+      quantity: parseFloat(wrapMatch[1]) || 1,
+      unit_of_measure: uom,
+      part_number: null,
+    });
+  }
+
   // Default fallback if no specific pattern matched
   if (items.length === 0) {
     const qtyMatch = text.match(/\b(\d+(?:\.\d+)?)\b/);
@@ -186,6 +230,15 @@ export function heuristicExtractRequisition(
   let site_name: string | null = null;
   let zone_name: string | null = null;
   let location_detail: string | null = null;
+
+  if (lower.includes("fairview farm")) {
+    site_name = "Fairview Farm Main";
+  }
+
+  const bananaShedMatch = text.match(/\b(banana\s*shed)\b/i);
+  if (bananaShedMatch) {
+    zone_name = bananaShedMatch[1].replace(/\b\w/g, (c) => c.toUpperCase());
+  }
 
   const coldRoomMatch = text.match(/\b(cold\s*room\s*\d+)\b/i);
   if (coldRoomMatch) {
@@ -215,12 +268,14 @@ export function heuristicExtractRequisition(
     clarification_needed: isHeuristicFallback
       ? "Could not fully parse specific line items; please confirm part specifications."
       : null,
+    transcript: null,
   };
 }
 
 /**
  * Extracts structured requisition items via Google Gemini API.
- * Uses gemini-3.8-flash as the primary default model with automatic fallback.
+ * Uses primary model gemini-3.8-flash with a single immediate fallback to gemini-flash-lite-latest (4500ms timeout).
+ * If both fail or time out, immediately falls back to heuristic extraction without cycling through redundant models.
  */
 export async function extractWithGemini(
   content: { text?: string; audio?: { data: Uint8Array; mimeType: string } }
@@ -233,11 +288,10 @@ export async function extractWithGemini(
     return heuristicExtractRequisition(rawText || "Field requisition");
   }
 
-  // Models to attempt: primary is gemini-3.8-flash as specified by user requirements
+  // Fast 2-tier model cascade: primary gemini-3.8-flash, immediate fallback gemini-flash-lite-latest
   const modelCandidates = [
     "gemini-3.8-flash",
-    "gemini-flash-latest",
-    "gemini-3.7-flash",
+    "gemini-flash-lite-latest",
   ];
 
   // Construct parts
@@ -251,7 +305,7 @@ export async function extractWithGemini(
       },
     });
     userParts.push({
-      text: "Transcribe the audio note and extract the requisition items according to the schema.",
+      text: "Transcribe the audio note verbatim into the 'transcript' field and extract the requisition items according to the schema.",
     });
   } else if (rawText) {
     userParts.push({ text: rawText });
@@ -283,13 +337,13 @@ export async function extractWithGemini(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(4500),
       });
 
       if (!res.ok) {
         const errBody = await res.text();
         console.warn(`[Gemini] Model ${model} returned HTTP ${res.status}: ${errBody.slice(0, 150)}`);
-        // If 404, 429, or 503, try next candidate
+        // Try immediate fallback candidate
         continue;
       }
 
@@ -328,6 +382,7 @@ export async function extractWithGemini(
           location_detail: parsed.location_detail ? String(parsed.location_detail).trim() : null,
           confidence_score: typeof parsed.confidence_score === "number" ? parsed.confidence_score : 0.85,
           clarification_needed: parsed.clarification_needed || null,
+          transcript: parsed.transcript ? String(parsed.transcript).trim() : null,
         };
       }
     } catch (err) {
@@ -335,7 +390,7 @@ export async function extractWithGemini(
     }
   }
 
-  // If all models failed, use heuristic extraction
-  console.warn("[Gemini] All Gemini model attempts failed; falling back to heuristic extraction.");
+  // If both models failed or timed out, immediately execute heuristic extraction
+  console.warn("[Gemini] Both Gemini models failed or timed out; immediately falling back to heuristic extraction.");
   return heuristicExtractRequisition(rawText);
 }

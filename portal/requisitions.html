@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Supply Conduit | Operational Tracker & Triage Pipeline</title>
+  <!-- Google Fonts: Inter & Playfair Display -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -11,14 +15,17 @@
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            serif: ['Playfair Display', 'Georgia', 'serif'],
+          },
           colors: {
-            brand: {
-              50: '#ecfdf5',
-              100: '#d1fae5',
-              500: '#10b981',
-              600: '#059669',
-              700: '#047857',
-            }
+            primary: '#1e3a5f',
+            foreground: '#1a1a2e',
+            muted: '#6b7280',
+            border: '#e5e7eb',
+            'dark-bg': '#0a0a14',
+            'dark-card': '#12121f',
           }
         }
       }
@@ -53,95 +60,108 @@
       transform: scale(0.98);
     }
     .kanban-column-body.drag-over {
-      background-color: #f0fdf4 !important;
-      border: 2px dashed #10b981 !important;
+      background-color: #f1f5f9 !important;
+      border: 2px dashed #0f172a !important;
       border-radius: 0.75rem;
     }
   </style>
 </head>
-<body class="h-full flex flex-col font-sans antialiased overflow-hidden bg-slate-50 text-slate-800 selection:bg-emerald-500 selection:text-white">
+<body class="h-full flex flex-col font-sans antialiased overflow-hidden bg-[#f8fafc] text-slate-800 selection:bg-slate-900 selection:text-white">
 
-  <!-- Top Master Navigation -->
-  <header class="w-full bg-white border-b border-slate-200 px-6 py-2.5 flex-shrink-0 z-30 shadow-xs">
+  <!-- Top Master Navigation (The Vault Minimalist Executive Masthead) -->
+  <header class="w-full bg-white border-b border-slate-200/80 px-6 py-3 flex-shrink-0 z-30 shadow-2xs">
     <div class="flex items-center justify-between gap-4">
       
-      <!-- Brand & Title -->
+      <!-- Brand & Title (Clean Logistics Route Node SVG + Serif Title) -->
       <div class="flex items-center space-x-3">
-        <a href="requisitions.html" class="flex items-center space-x-2.5">
-          <div class="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
-            <i data-lucide="layers" class="w-4 h-4"></i>
+        <a href="requisitions.html" class="flex items-center space-x-3 group">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs group-hover:bg-slate-800 transition-colors">
+            <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="6" r="3"/>
+              <circle cx="18" cy="18" r="3"/>
+              <path d="M6 9v3a6 6 0 0 0 6 6h3"/>
+              <polyline points="12 6 18 6 18 12"/>
+            </svg>
           </div>
-          <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-bold tracking-tight text-slate-900 text-base">SUPPLY CONDUIT</span>
-              <span class="text-[10px] uppercase font-mono font-semibold tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700">Operations</span>
-            </div>
-            <p class="text-[11px] text-slate-500 leading-none">Field Procurement &amp; Operational Tracker</p>
-          </div>
+          <span class="font-serif font-bold tracking-tight text-slate-900 text-xl leading-none">Supply Conduit</span>
         </a>
       </div>
 
-      <!-- Center Status, Field Team & Relief Controls -->
-      <div class="flex items-center space-x-3">
-        <!-- Live Connection Status Pill -->
-        <div id="connectionStatusPill" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-mono">
-          <span id="connectionDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-          <span id="connectionText" class="text-slate-600 font-medium">Connecting Realtime...</span>
-        </div>
-
-        <!-- Field Team Whitelist Modal Button -->
+      <!-- User Identity & Consolidated Profile Dropdown (Right) -->
+      <div class="relative" id="profileDropdownContainer">
         <button
-          id="openTeamModalBtn"
+          id="userProfileBtn"
           type="button"
-          class="flex items-center space-x-1.5 px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 transition-all shadow-xs cursor-pointer"
-          title="Manage field staff & mobile whitelist"
+          class="flex items-center gap-2.5 p-1.5 rounded-xl border border-transparent hover:bg-slate-100 hover:border-slate-200 transition-all text-left cursor-pointer group"
+          aria-expanded="false"
+          aria-haspopup="true"
         >
-          <i data-lucide="users" class="w-3.5 h-3.5 text-emerald-600"></i>
-          <span>Field Team</span>
-          <span id="navTeamCountBadge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-bold font-mono">0</span>
-        </button>
-
-        <!-- Relief-Admin Triage Banner Toggle -->
-        <button
-          id="reliefToggleBtn"
-          type="button"
-          class="flex items-center space-x-1.5 px-3 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 transition-all shadow-xs cursor-pointer"
-          title="Toggle shared relief triage mode"
-        >
-          <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-500"></i>
-          <span id="reliefToggleText">Relief Triage</span>
-        </button>
-      </div>
-
-      <!-- User Identity & Logout -->
-      <div class="flex items-center space-x-3">
-        <div id="userProfileCard" class="flex items-center space-x-2.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-          <div class="w-7 h-7 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[11px] font-mono text-emerald-800 font-bold">
-            <i data-lucide="user" class="w-3.5 h-3.5"></i>
+          <div class="relative w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center border border-slate-300 shadow-2xs shrink-0">
+            <span id="userAvatarInitials">?</span>
           </div>
-          <div class="flex flex-col text-left">
-            <div class="flex items-center space-x-1.5">
-              <span id="userNameSpan" class="text-xs font-semibold text-slate-800 leading-tight">Authenticating...</span>
-              <span id="userRoleBadge" class="text-[9px] uppercase font-mono px-1 py-0.2 rounded bg-slate-200 text-slate-700 font-bold">buyer</span>
+          <div class="hidden sm:flex items-center gap-2">
+            <span id="userNameSpan" class="text-xs sm:text-sm font-semibold text-slate-900 group-hover:text-slate-700 transition-colors">Authenticating...</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-colors"></i>
+          </div>
+        </button>
+
+        <!-- Floating Profile Dropdown Menu -->
+        <div
+          id="profileDropdownMenu"
+          class="hidden absolute right-0 mt-2 w-72 bg-white border border-slate-200/90 rounded-2xl shadow-xl py-2 z-50 text-xs animate-in fade-in duration-150"
+        >
+          <!-- User Info Card -->
+          <div class="px-4 py-3 border-b border-slate-100">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span id="dropdownUserName" class="font-bold text-slate-900 text-sm truncate">Luca Dudley</span>
+              <span id="userRoleBadge" class="text-[9px] uppercase font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-bold">Admin</span>
             </div>
-            <span id="userCompanySpan" class="text-[10px] text-slate-500 font-mono leading-none">Apex Industrial Ops &bull; APEX01</span>
+            <p id="userCompanySpan" class="text-slate-500 font-mono text-[11px] truncate">Simple Solutions Demo &bull; SIMP01</p>
+          </div>
+
+          <!-- Menu Options -->
+          <div class="py-1">
+            <button
+              id="openTeamModalBtn"
+              type="button"
+              class="w-full px-4 py-2 text-left flex items-center gap-2.5 text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors cursor-pointer"
+            >
+              <i data-lucide="users" class="w-4 h-4 text-slate-500"></i>
+              <span class="flex-1">Field Team &amp; Whitelist</span>
+              <span id="navTeamCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-700 border border-slate-200 font-bold font-mono">0</span>
+            </button>
+
+            <button
+              id="openSitesOverviewBtn"
+              type="button"
+              class="w-full px-4 py-2 text-left flex items-center gap-2.5 text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium transition-colors cursor-pointer"
+            >
+              <i data-lucide="map-pin" class="w-4 h-4 text-slate-500"></i>
+              <span>Sites &amp; Locations</span>
+            </button>
+          </div>
+
+          <!-- Divider -->
+          <div class="h-px bg-slate-100 my-1"></div>
+
+          <!-- Sign Out -->
+          <div class="py-1">
+            <button
+              id="signOutBtn"
+              type="button"
+              class="w-full px-4 py-2 text-left flex items-center gap-2.5 text-red-600 hover:bg-red-50 font-medium transition-colors cursor-pointer"
+            >
+              <i data-lucide="log-out" class="w-4 h-4 text-red-500"></i>
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
-
-        <button
-          id="signOutBtn"
-          type="button"
-          class="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
-          title="Sign Out"
-        >
-          <i data-lucide="log-out" class="w-4 h-4"></i>
-        </button>
       </div>
 
     </div>
   </header>
 
-  <!-- Relief-Admin Triage Banner (Collapsible) -->
+  <!-- Relief-Admin Triage Banner (Hidden) -->
   <div id="reliefBanner" class="hidden bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex-shrink-0 z-20">
     <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
       <div class="flex items-center space-x-2.5 text-amber-900 font-medium">
@@ -149,7 +169,7 @@
           <i data-lucide="alert-triangle" class="w-4 h-4"></i>
         </span>
         <span>
-          <strong>Relief-Admin Triage Active:</strong> Shared queue view for shift handovers. Highlighting critical breakdown orders and unassigned tickets.
+          <strong>Relief-Admin Triage Active:</strong> Shared queue view for shift handovers.
         </span>
       </div>
       <div class="flex items-center space-x-2">
@@ -163,23 +183,37 @@
     </div>
   </div>
 
-  <!-- Filter & Operational Triage Bar -->
-  <div class="w-full bg-white/90 border-b border-slate-200 px-6 py-2.5 flex-shrink-0 z-10 backdrop-blur-xs">
+  <!-- Streamlined Filter & Operational Control Toolbar -->
+  <div class="w-full bg-white/90 border-b border-slate-200/80 px-6 py-2.5 flex-shrink-0 z-10 backdrop-blur-xs">
     <div class="flex flex-wrap items-center justify-between gap-3 text-xs">
       
-      <div class="flex flex-wrap items-center gap-2.5">
-        <!-- Site Filter -->
-        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
+      <!-- Left: Search Bar & Consolidated Filter Dropdowns -->
+      <div class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]">
+        <!-- Search Bar -->
+        <div class="relative flex-1 max-w-sm min-w-[200px]">
+          <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Search requisitions..."
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white transition-all shadow-2xs"
+          >
+        </div>
+
+        <!-- Site Filter Dropdown -->
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs">
           <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400"></i>
-          <select id="siteFilter" class="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer">
-            <option value="ALL">All Operational Sites</option>
+          <select id="siteFilter" class="bg-transparent text-slate-700 font-medium text-xs focus:outline-none cursor-pointer">
+            <option value="ALL">All Sites</option>
           </select>
         </div>
 
-        <!-- Urgency Filter -->
-        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
+        <!-- Urgency Filter Dropdown -->
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs">
           <i data-lucide="flame" class="w-3.5 h-3.5 text-slate-400"></i>
-          <select id="urgencyFilter" class="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer">
+          <select id="urgencyFilter" class="bg-transparent text-slate-700 font-medium text-xs focus:outline-none cursor-pointer">
             <option value="ALL">All Urgencies</option>
             <option value="CRITICAL_BREAKDOWN">🔥 Critical Breakdown</option>
             <option value="URGENT">⚠️ Urgent</option>
@@ -187,58 +221,39 @@
           </select>
         </div>
 
-        <!-- Unassigned Tickets Toggle -->
-        <label class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-slate-300 transition-all select-none shadow-2xs">
-          <input type="checkbox" id="unassignedFilter" class="rounded bg-white border-slate-300 text-emerald-600 focus:ring-0">
-          <span class="text-slate-600 font-medium">Unassigned Only</span>
-        </label>
-
-        <!-- Duplicate Suspects Only Toggle -->
-        <label class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-slate-300 transition-all select-none shadow-2xs">
-          <input type="checkbox" id="duplicatesOnlyFilter" class="rounded bg-white border-slate-300 text-amber-500 focus:ring-0">
-          <span class="text-amber-800 font-medium">⚠️ Duplicates Only</span>
-        </label>
-
-        <!-- Archived Closed Retention Toggle -->
-        <label class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-slate-300 transition-all select-none shadow-2xs" title="By default, closed tickets older than 14 days are archived">
-          <input type="checkbox" id="showArchivedClosedToggle" class="rounded bg-white border-slate-300 text-emerald-600 focus:ring-0">
-          <span class="text-slate-600 font-medium">Show Archived (&gt;14d)</span>
-        </label>
+        <!-- Consolidated View Filter Dropdown -->
+        <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs">
+          <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-slate-400"></i>
+          <select id="viewFilter" class="bg-transparent text-slate-700 font-medium text-xs focus:outline-none cursor-pointer">
+            <option value="ACTIVE">Active Pipeline</option>
+            <option value="DUPLICATES">Duplicates Only</option>
+            <option value="UNASSIGNED">Unassigned Only</option>
+            <option value="ARCHIVED">Archived (&gt;14d)</option>
+          </select>
+        </div>
       </div>
 
-      <!-- Search & Metric Counters -->
-      <div class="flex items-center space-x-3">
-        <div class="relative">
-          <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5 pointer-events-none"></i>
-          <input
-            type="text"
-            id="searchInput"
-            placeholder="Search ref, line item, requester..."
-            class="w-64 bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all shadow-2xs"
-          >
-        </div>
-
-        <!-- Summary Stat Badge -->
-        <div class="hidden xl:flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg font-mono text-[11px] text-slate-600 shadow-2xs">
-          <span>ACTIVE ORDERS: <strong id="statsTotalCount" class="text-slate-900">0</strong></span>
-        </div>
+      <!-- Right-Side Counter -->
+      <div class="flex items-center space-x-2 text-slate-500 font-mono text-xs">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span><strong id="statsTotalCount" class="text-slate-900 font-semibold">0</strong> Active Orders</span>
       </div>
 
     </div>
   </div>
 
   <!-- Main Kanban Board Workspace -->
-  <main class="flex-1 overflow-x-auto overflow-y-hidden p-6 bg-slate-50">
+  <main class="flex-1 overflow-x-auto overflow-y-hidden p-6 bg-[#f8fafc]">
     <div class="flex h-full gap-4 min-w-[1300px]">
 
       <!-- Column 1: LOGGED -->
-      <div class="flex-1 flex flex-col bg-slate-100/90 border border-slate-200 rounded-xl overflow-hidden shadow-xs" data-column="LOGGED">
-        <div class="p-3 border-b border-slate-200 bg-white/80 flex items-center justify-between">
+      <div class="flex-1 flex flex-col bg-slate-100/70 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs" data-column="LOGGED">
+        <div class="p-3.5 border-b border-slate-200/80 bg-white/90 flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">1. Logged / In Review</h3>
+            <h3 class="font-serif text-sm font-bold tracking-tight text-slate-800">1. Logged / In Review</h3>
           </div>
-          <span id="count_LOGGED" class="px-2 py-0.5 rounded-md bg-slate-200/80 text-[11px] font-mono font-bold text-slate-700">0</span>
+          <span id="count_LOGGED" class="px-2 py-0.5 rounded-full bg-slate-200/80 text-[11px] font-mono font-bold text-slate-700">0</span>
         </div>
         <div id="col_LOGGED" class="kanban-column-body flex-1 p-3 space-y-3 overflow-y-auto" data-status="LOGGED">
           <!-- Cards injected dynamically -->
@@ -246,13 +261,13 @@
       </div>
 
       <!-- Column 2: PENDING_QUOTE -->
-      <div class="flex-1 flex flex-col bg-slate-100/90 border border-slate-200 rounded-xl overflow-hidden shadow-xs" data-column="PENDING_QUOTE">
-        <div class="p-3 border-b border-slate-200 bg-white/80 flex items-center justify-between">
+      <div class="flex-1 flex flex-col bg-slate-100/70 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs" data-column="PENDING_QUOTE">
+        <div class="p-3.5 border-b border-slate-200/80 bg-white/90 flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">2. Pending Quote</h3>
+            <h3 class="font-serif text-sm font-bold tracking-tight text-slate-800">2. Pending Quote</h3>
           </div>
-          <span id="count_PENDING_QUOTE" class="px-2 py-0.5 rounded-md bg-amber-100 text-[11px] font-mono font-bold text-amber-800">0</span>
+          <span id="count_PENDING_QUOTE" class="px-2 py-0.5 rounded-full bg-amber-100 text-[11px] font-mono font-bold text-amber-800">0</span>
         </div>
         <div id="col_PENDING_QUOTE" class="kanban-column-body flex-1 p-3 space-y-3 overflow-y-auto" data-status="PENDING_QUOTE">
           <!-- Cards injected dynamically -->
@@ -260,13 +275,13 @@
       </div>
 
       <!-- Column 3: PO_PLACED -->
-      <div class="flex-1 flex flex-col bg-slate-100/90 border border-slate-200 rounded-xl overflow-hidden shadow-xs" data-column="PO_PLACED">
-        <div class="p-3 border-b border-slate-200 bg-white/80 flex items-center justify-between">
+      <div class="flex-1 flex flex-col bg-slate-100/70 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs" data-column="PO_PLACED">
+        <div class="p-3.5 border-b border-slate-200/80 bg-white/90 flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">3. PO Placed</h3>
+            <h3 class="font-serif text-sm font-bold tracking-tight text-slate-800">3. PO Placed</h3>
           </div>
-          <span id="count_PO_PLACED" class="px-2 py-0.5 rounded-md bg-blue-100 text-[11px] font-mono font-bold text-blue-800">0</span>
+          <span id="count_PO_PLACED" class="px-2 py-0.5 rounded-full bg-blue-100 text-[11px] font-mono font-bold text-blue-800">0</span>
         </div>
         <div id="col_PO_PLACED" class="kanban-column-body flex-1 p-3 space-y-3 overflow-y-auto" data-status="PO_PLACED">
           <!-- Cards injected dynamically -->
@@ -274,13 +289,13 @@
       </div>
 
       <!-- Column 4: DELIVERED_TO_SITE -->
-      <div class="flex-1 flex flex-col bg-slate-100/90 border border-slate-200 rounded-xl overflow-hidden shadow-xs" data-column="DELIVERED_TO_SITE">
-        <div class="p-3 border-b border-slate-200 bg-white/80 flex items-center justify-between">
+      <div class="flex-1 flex flex-col bg-slate-100/70 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs" data-column="DELIVERED_TO_SITE">
+        <div class="p-3.5 border-b border-slate-200/80 bg-white/90 flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">4. Delivered to Site</h3>
+            <h3 class="font-serif text-sm font-bold tracking-tight text-slate-800">4. Delivered to Site</h3>
           </div>
-          <span id="count_DELIVERED_TO_SITE" class="px-2 py-0.5 rounded-md bg-purple-100 text-[11px] font-mono font-bold text-purple-800">0</span>
+          <span id="count_DELIVERED_TO_SITE" class="px-2 py-0.5 rounded-full bg-purple-100 text-[11px] font-mono font-bold text-purple-800">0</span>
         </div>
         <div id="col_DELIVERED_TO_SITE" class="kanban-column-body flex-1 p-3 space-y-3 overflow-y-auto" data-status="DELIVERED_TO_SITE">
           <!-- Cards injected dynamically -->
@@ -288,13 +303,13 @@
       </div>
 
       <!-- Column 5: CLOSED -->
-      <div class="flex-1 flex flex-col bg-slate-100/90 border border-slate-200 rounded-xl overflow-hidden shadow-xs" data-column="CLOSED">
-        <div class="p-3 border-b border-slate-200 bg-white/80 flex items-center justify-between">
+      <div class="flex-1 flex flex-col bg-slate-100/70 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs" data-column="CLOSED">
+        <div class="p-3.5 border-b border-slate-200/80 bg-white/90 flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">5. Closed (&le;14d)</h3>
+            <h3 class="font-serif text-sm font-bold tracking-tight text-slate-800">5. Closed (&le;14d)</h3>
           </div>
-          <span id="count_CLOSED" class="px-2 py-0.5 rounded-md bg-emerald-100 text-[11px] font-mono font-bold text-emerald-800">0</span>
+          <span id="count_CLOSED" class="px-2 py-0.5 rounded-full bg-emerald-100 text-[11px] font-mono font-bold text-emerald-800">0</span>
         </div>
         <div id="col_CLOSED" class="kanban-column-body flex-1 p-3 space-y-3 overflow-y-auto" data-status="CLOSED">
           <!-- Cards injected dynamically -->
@@ -311,21 +326,21 @@
     <div class="relative w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150">
       
       <!-- Modal Header -->
-      <div class="p-5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+      <div class="p-5 border-b border-slate-200/80 bg-white flex items-center justify-between">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
             <i data-lucide="clipboard-list" class="w-5 h-5"></i>
           </div>
           <div>
-            <div class="flex items-center space-x-2">
-              <h2 id="modalRefCode" class="text-base font-bold text-slate-900 tracking-tight font-mono">REQ-XXXX-XXXX</h2>
-              <span id="modalPoBadge" class="hidden px-2 py-0.5 rounded font-mono text-xs bg-blue-50 text-blue-700 border border-blue-200 font-semibold">PO-XXXXX</span>
-              <span id="modalUrgencyBadge" class="px-2 py-0.5 rounded text-xs font-bold uppercase">Routine</span>
+            <div class="flex items-center space-x-2.5">
+              <h2 id="modalRefCode" class="text-base font-serif font-bold text-slate-900 tracking-tight">REQ-XXXX-XXXX</h2>
+              <span id="modalPoBadge" class="hidden px-2.5 py-0.5 rounded-full font-mono text-xs bg-slate-100 text-slate-700 border border-slate-200 font-semibold">PO-XXXXX</span>
+              <span id="modalUrgencyBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider">Routine</span>
             </div>
-            <p id="modalSiteZone" class="text-xs text-slate-500 mt-0.5">Site &bull; Zone</p>
+            <p id="modalSiteZone" class="text-xs text-slate-500 mt-1">Site &bull; Zone</p>
           </div>
         </div>
-        <button id="closeModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
+        <button id="closeModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
@@ -352,10 +367,10 @@
         </div>
 
         <!-- WhatsApp Inbound Ingestion Details -->
-        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+        <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 space-y-3">
           <div class="flex items-center justify-between text-xs text-slate-600 border-b border-slate-200/80 pb-2">
             <div class="flex items-center space-x-2">
-              <i data-lucide="message-square" class="w-4 h-4 text-emerald-600"></i>
+              <i data-lucide="message-square" class="w-4 h-4 text-slate-600"></i>
               <span class="font-semibold text-slate-800">Inbound WhatsApp Request</span>
               <span id="modalRequesterName" class="text-slate-600">&bull; Requester Name</span>
             </div>
@@ -364,26 +379,18 @@
 
           <!-- Original Transcript / Raw Text -->
           <div>
-            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Requester Voice Note / Text:</label>
-            <p id="modalRawText" class="text-xs text-slate-800 italic bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+            <label id="modalRawTextLabel" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">WhatsApp Text Message:</label>
+            <p id="modalRawText" class="text-xs text-slate-800 italic bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
               "No raw message content."
             </p>
           </div>
 
-          <!-- Audio Voice Note Player Mock -->
-          <div id="modalAudioSection" class="flex items-center space-x-3 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
-            <button id="modalPlayAudioBtn" class="w-8 h-8 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 flex items-center justify-center transition-all cursor-pointer">
-              <i data-lucide="play" class="w-4 h-4 ml-0.5"></i>
-            </button>
-            <div class="flex-1">
-              <div class="flex justify-between text-[11px] font-mono text-slate-500 mb-1">
-                <span>Field Voice Note (Audio)</span>
-                <span id="audioDuration">0:14</span>
-              </div>
-              <div class="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full bg-emerald-500 w-1/3 rounded-full"></div>
-              </div>
+          <!-- Audio Voice Note Player -->
+          <div id="modalAudioSection" class="hidden flex flex-col space-y-2 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+            <div class="flex items-center justify-between text-[11px] font-mono text-slate-500">
+              <span class="flex items-center gap-1.5"><i data-lucide="mic" class="w-3.5 h-3.5 text-slate-600"></i> Field Voice Note (Audio)</span>
             </div>
+            <audio id="modalAudioPlayer" controls class="w-full h-8" preload="metadata" src=""></audio>
           </div>
         </div>
 
@@ -393,9 +400,9 @@
             <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Requested Items</h4>
             <span id="modalItemCount" class="text-xs font-medium text-slate-500">0 items</span>
           </div>
-          <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+          <div class="border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs">
             <table class="w-full text-left text-xs">
-              <thead class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
+              <thead class="bg-slate-50 border-b border-slate-200/80 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
                 <tr>
                   <th class="p-3">Item Description</th>
                   <th class="p-3 w-28">Quantity</th>
@@ -410,7 +417,7 @@
         </div>
 
         <!-- Practical Operational Inputs (Supplier Name, Invoice/PO Ref, Operations Note) -->
-        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3.5">
+        <div class="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 space-y-3.5">
           <div class="flex items-center justify-between">
             <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Operational Procurement Details</h4>
             <span class="text-[11px] text-slate-400">Supplier &amp; Tracking</span>
@@ -425,7 +432,7 @@
                 type="text"
                 id="modalSupplierInput"
                 placeholder="e.g. Agri Industrial Supplies Ceres"
-                class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 shadow-2xs"
               />
             </div>
             <div>
@@ -436,7 +443,7 @@
                 type="text"
                 id="modalPoNumberInput"
                 placeholder="e.g. PO-10245 or INV-8921"
-                class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 shadow-2xs"
               />
             </div>
           </div>
@@ -449,7 +456,7 @@
               id="modalNotesInput"
               rows="2"
               placeholder="Delivery instructions, ETA, contact person, or site notes..."
-              class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+              class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 shadow-2xs"
             ></textarea>
           </div>
 
@@ -457,7 +464,7 @@
             <button
               id="modalSaveDetailsBtn"
               type="button"
-              class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg transition-all shadow-xs cursor-pointer"
+              class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs cursor-pointer"
             >
               Save Details
             </button>
@@ -467,11 +474,11 @@
       </div>
 
       <!-- Modal Footer Action Bar -->
-      <div class="p-5 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-3">
+      <div class="p-5 border-t border-slate-200/80 bg-slate-50/80 flex items-center justify-between gap-3">
         <button
           id="modalCancelReqBtn"
           type="button"
-          class="px-3.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 text-slate-600 border border-slate-200 hover:border-red-300 rounded-lg text-xs font-medium transition-all shadow-xs cursor-pointer"
+          class="px-3.5 py-2 bg-white hover:bg-red-50 hover:text-red-700 text-slate-600 border border-slate-200 hover:border-red-200 rounded-xl text-xs font-medium transition-all shadow-2xs cursor-pointer"
         >
           Cancel Order
         </button>
@@ -480,7 +487,7 @@
         <button
           id="modalAdvanceStatusBtn"
           type="button"
-          class="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all shadow-sm cursor-pointer"
+          class="flex items-center space-x-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition-all shadow-xs cursor-pointer"
         >
           <span id="modalAdvanceStatusText">Advance Status</span>
           <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -497,28 +504,23 @@
     <div class="relative w-full max-w-4xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150 flex flex-col max-h-[85vh]">
       
       <!-- Modal Header -->
-      <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between flex-shrink-0">
-        <div class="flex items-center space-x-3">
-          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+      <div class="p-5 border-b border-slate-200/80 bg-white flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
             <i data-lucide="users" class="w-5 h-5"></i>
           </div>
           <div>
-            <div class="flex items-center space-x-2">
-              <h2 class="text-base font-bold text-slate-900 tracking-tight">Field Team &amp; Mobile Whitelist</h2>
-              <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                Code: <strong id="teamCompanyCode">APEX01</strong>
-              </span>
-            </div>
+            <h3 class="font-serif text-xl font-bold text-slate-900">Field Team &amp; Mobile Whitelist</h3>
             <p class="text-xs text-slate-500 mt-0.5">Authorized WhatsApp mobile senders permitted to log site requisitions.</p>
           </div>
         </div>
-        <button id="closeTeamModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
+        <button id="closeTeamModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
       <!-- Action Toolbar -->
-      <div class="p-4 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
+      <div class="p-4 border-b border-slate-200/80 bg-white flex flex-wrap items-center justify-between gap-3 text-xs flex-shrink-0">
         <div class="flex flex-wrap items-center gap-2.5 flex-1">
           <!-- Search Input -->
           <div class="relative min-w-[200px] flex-1 max-w-xs">
@@ -527,12 +529,12 @@
               type="text"
               id="teamSearchInput"
               placeholder="Filter by name, phone, or title..."
-              class="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white transition-all shadow-2xs"
+              class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white transition-all shadow-2xs"
             >
           </div>
 
           <!-- Site Filter -->
-          <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
+          <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
             <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400"></i>
             <select id="teamSiteFilter" class="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer">
               <option value="ALL">All Sites</option>
@@ -540,7 +542,7 @@
           </div>
 
           <!-- Status Filter -->
-          <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 shadow-2xs">
+          <div class="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-2xs">
             <i data-lucide="filter" class="w-3.5 h-3.5 text-slate-400"></i>
             <select id="teamStatusFilter" class="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer">
               <option value="ALL">All Statuses</option>
@@ -551,25 +553,14 @@
         </div>
 
         <div class="flex items-center space-x-2">
-          <!-- Download CSV Template -->
-          <button
-            id="downloadTemplateBtn"
-            type="button"
-            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium shadow-2xs transition-all cursor-pointer"
-            title="Download formatted CSV template for bulk upload"
-          >
-            <i data-lucide="download" class="w-3.5 h-3.5 text-slate-500"></i>
-            <span>CSV Template</span>
-          </button>
-
           <!-- Batch CSV Import -->
           <button
             id="openBatchCsvBtn"
             type="button"
-            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium shadow-2xs transition-all cursor-pointer"
+            class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium shadow-2xs transition-all cursor-pointer"
             title="Batch import field requesters from CSV file"
           >
-            <i data-lucide="upload-cloud" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <i data-lucide="upload-cloud" class="w-3.5 h-3.5 text-slate-700"></i>
             <span>Batch Import</span>
           </button>
 
@@ -577,7 +568,7 @@
           <button
             id="openAddRequesterBtn"
             type="button"
-            class="flex items-center space-x-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+            class="flex items-center space-x-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow-xs transition-all cursor-pointer"
           >
             <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
             <span>Add Requester</span>
@@ -587,9 +578,9 @@
 
       <!-- Whitelist Table Container -->
       <div class="flex-1 overflow-y-auto p-4">
-        <div class="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+        <div class="border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs">
           <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
+            <thead class="bg-slate-50 border-b border-slate-200/80 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
               <tr>
                 <th class="p-3">Full Name</th>
                 <th class="p-3">WhatsApp Number</th>
@@ -607,15 +598,52 @@
       </div>
 
       <!-- Modal Footer -->
-      <div class="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
+      <div class="p-4 border-t border-slate-200/80 bg-slate-50/80 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
         <div>
           <span>Total Whitelisted: <strong id="teamTotalCount" class="text-slate-800 font-mono">0</strong></span>
           <span class="mx-2">&bull;</span>
           <span>Active: <strong id="teamActiveCount" class="text-emerald-700 font-mono">0</strong></span>
         </div>
         <div class="text-[11px] text-slate-400">
-          Requesters can also self-enroll by messaging your 6-character code <strong class="text-slate-600">APEX01</strong> to the WhatsApp bot.
+          Requesters can also self-enroll by messaging your 6-character code <span id="teamModalCompanyCode" class="font-mono font-bold text-slate-800"></span> to the WhatsApp bot.
         </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: Registered Sites & Locations Overview (The Vault Profile Flow)   -->
+  <!-- ======================================================================= -->
+  <div id="sitesModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="relative w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150 flex flex-col max-h-[80vh]">
+      
+      <div class="p-5 border-b border-slate-200/80 bg-white flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
+            <i data-lucide="map-pin" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-serif font-bold text-slate-900 tracking-tight">Sites &amp; Locations</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Registered delivery facilities and operational site codes.</p>
+          </div>
+        </div>
+        <button id="closeSitesModalBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 flex-1 overflow-y-auto">
+        <div id="sitesListContainer" class="border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs divide-y divide-slate-100 text-xs">
+          <!-- Injected dynamically via JS -->
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-slate-200/80 bg-slate-50/80 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
+        <span>Registered Sites: <strong id="sitesTotalCount" class="text-slate-800 font-mono">0</strong></span>
+        <button id="closeSitesModalFooterBtn" type="button" class="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium transition-all shadow-2xs cursor-pointer">
+          Close
+        </button>
       </div>
 
     </div>
@@ -627,14 +655,14 @@
   <div id="addRequesterModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150">
       
-      <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
-        <div class="flex items-center space-x-2.5">
-          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+      <div class="p-5 border-b border-slate-200/80 bg-white flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
             <i data-lucide="user-plus" class="w-4 h-4"></i>
           </div>
-          <h3 class="text-sm font-bold text-slate-900">Add Field Requester</h3>
+          <h3 class="text-sm font-serif font-bold text-slate-900">Add Field Requester</h3>
         </div>
-        <button id="closeAddRequesterBtn" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
+        <button id="closeAddRequesterBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
@@ -649,7 +677,7 @@
             id="reqFullName"
             required
             placeholder="e.g. Sipho Khumalo"
-            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs"
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white shadow-2xs"
           />
         </div>
 
@@ -662,7 +690,7 @@
             id="reqPhoneNumber"
             required
             placeholder="e.g. 082 123 4567 or +27821234567"
-            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs"
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white shadow-2xs"
           />
           <p class="text-[10px] text-slate-400 mt-1">Auto-normalized to E.164 (+27XXXXXXXXX). Must match sender WhatsApp ID.</p>
         </div>
@@ -675,7 +703,7 @@
             type="text"
             id="reqRoleTitle"
             placeholder="e.g. Packhouse Foreman, Workshop Tech"
-            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs"
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white shadow-2xs"
           />
         </div>
 
@@ -685,7 +713,7 @@
           </label>
           <select
             id="reqDefaultSite"
-            class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white shadow-2xs cursor-pointer"
+            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:bg-white shadow-2xs cursor-pointer"
           >
             <option value="">(None - resolved dynamically per ticket)</option>
           </select>
@@ -695,14 +723,14 @@
           <button
             type="button"
             id="cancelAddRequesterBtn"
-            class="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 font-medium transition-all cursor-pointer"
+            class="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-slate-600 font-medium transition-all cursor-pointer shadow-2xs"
           >
             Cancel
           </button>
           <button
             type="submit"
             id="saveRequesterBtn"
-            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+            class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow-xs transition-all cursor-pointer"
           >
             Save Requester
           </button>
@@ -719,30 +747,47 @@
     <div class="relative w-full max-w-3xl bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-800 animate-in fade-in duration-150 flex flex-col max-h-[85vh]">
       
       <!-- Header -->
-      <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between flex-shrink-0">
-        <div class="flex items-center space-x-3">
-          <div class="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
-            <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+      <div class="p-5 border-b border-slate-200/80 bg-white flex flex-col flex-shrink-0">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3.5">
+            <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
+              <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-serif font-bold text-slate-900">Batch CSV Requester Importer</h3>
+              <p class="text-xs text-slate-500 mt-1">Upload a CSV file containing staff names, mobile numbers, and site assignments.</p>
+            </div>
           </div>
-          <div>
-            <h3 class="text-sm font-bold text-slate-900">Batch CSV Requester Importer</h3>
-            <p class="text-xs text-slate-500 mt-0.5">Upload a CSV file containing staff names, mobile numbers, and site assignments.</p>
-          </div>
+          <button id="closeBatchImportBtn" class="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
         </div>
-        <button id="closeBatchImportBtn" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
+
+        <div class="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <svg class="w-4 h-4 text-rose-600 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+            </svg>
+            <span class="text-xs font-semibold text-rose-800 tracking-wide">
+              Please use this exact template! Custom column formats will be rejected.
+            </span>
+          </div>
+          <button id="downloadCsvTemplateBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-rose-300 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-lg shadow-2xs transition-colors shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Download CSV Template
+          </button>
+        </div>
       </div>
 
       <!-- File Dropzone & Toolbar -->
-      <div class="p-5 border-b border-slate-200 bg-white space-y-4 flex-shrink-0">
+      <div class="p-5 border-b border-slate-200/80 bg-white space-y-4 flex-shrink-0">
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center space-x-3">
             <input type="file" id="csvFileInput" accept=".csv,text/csv" class="hidden">
             <button
               id="chooseCsvBtn"
               type="button"
-              class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
+              class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
             >
               <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
               <span>Select CSV File</span>
@@ -756,7 +801,7 @@
         </div>
 
         <!-- Preview Stats Banner -->
-        <div id="csvStatsBanner" class="hidden p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+        <div id="csvStatsBanner" class="hidden p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
           <div class="flex items-center space-x-4">
             <span>Total Rows: <strong id="csvTotalRows" class="text-slate-800 font-mono">0</strong></span>
             <span>Valid: <strong id="csvValidRows" class="text-emerald-700 font-mono">0</strong></span>
@@ -772,9 +817,9 @@
           <i data-lucide="file-text" class="w-8 h-8 mx-auto text-slate-300 mb-2"></i>
           Select a CSV file to inspect and validate rows before committing to database.
         </div>
-        <div id="csvPreviewTableWrapper" class="hidden border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+        <div id="csvPreviewTableWrapper" class="hidden border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs">
           <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 border-b border-slate-200 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
+            <thead class="bg-slate-50 border-b border-slate-200/80 font-semibold text-slate-600 uppercase tracking-wider text-[11px]">
               <tr>
                 <th class="p-3">Full Name</th>
                 <th class="p-3">Phone Number</th>
@@ -791,11 +836,11 @@
       </div>
 
       <!-- Footer Action -->
-      <div class="p-4 border-t border-slate-200 bg-slate-50/80 flex items-center justify-end space-x-2 flex-shrink-0">
+      <div class="p-4 border-t border-slate-200/80 bg-slate-50/80 flex items-center justify-end space-x-2 flex-shrink-0">
         <button
           type="button"
           id="cancelBatchImportBtn"
-          class="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs text-slate-600 font-medium transition-all cursor-pointer"
+          class="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium transition-all cursor-pointer shadow-2xs"
         >
           Cancel
         </button>
@@ -803,7 +848,7 @@
           type="button"
           id="commitBatchImportBtn"
           disabled
-          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-lg text-xs shadow-xs transition-all cursor-pointer flex items-center space-x-2"
+          class="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-xs shadow-xs transition-all cursor-pointer flex items-center space-x-2"
         >
           <span id="commitBatchBtnText">Import Valid Requesters</span>
           <i data-lucide="check" class="w-4 h-4"></i>

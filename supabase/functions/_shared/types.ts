@@ -40,6 +40,7 @@ export interface StructuredRequisitionExtraction {
   zone_hint?: string | null;
   confidence_score: number; // 0.0 to 1.0
   clarification_needed?: string | null;
+  transcript?: string | null;
 }
 
 // ============================================================================

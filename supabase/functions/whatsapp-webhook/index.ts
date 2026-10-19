@@ -143,8 +143,8 @@ async function findOrCreateLocation(
   let resolvedZoneName: string | null = null;
 
   const rawSiteHint = extraction.site_name?.trim();
-  const rawZoneHint = extraction.zone_name?.trim();
-  const locationDetail = extraction.location_detail?.trim() || null;
+  const rawZoneHint = extraction.zone_name?.trim() || extraction.location_detail?.trim();
+  let locationDetail = extraction.location_detail?.trim() || null;
 
   // 1. Resolve Macro Site
   if (rawSiteHint && rawSiteHint.length > 1) {
@@ -152,14 +152,24 @@ async function findOrCreateLocation(
       .from("sites")
       .select("id, name, code")
       .eq("company_id", companyId)
-      .ilike("name", rawSiteHint)
-      .limit(1);
+      .eq("is_active", true);
 
     if (matchedSites && matchedSites.length > 0) {
-      resolvedSiteId = matchedSites[0].id;
-      resolvedSiteName = matchedSites[0].name;
-      console.log(`[Location Resolver] Matched existing site: ${resolvedSiteName} (${resolvedSiteId})`);
-    } else {
+      const hintLower = rawSiteHint.toLowerCase();
+      // Match exact or substring containment (e.g. "Fairview Farm" matches "Fairview Farm Main")
+      const foundSite = matchedSites.find((s) => {
+        const sLower = s.name.toLowerCase();
+        return sLower === hintLower || sLower.includes(hintLower) || hintLower.includes(sLower);
+      });
+
+      if (foundSite) {
+        resolvedSiteId = foundSite.id;
+        resolvedSiteName = foundSite.name;
+        console.log(`[Location Resolver] Matched existing site: ${resolvedSiteName} (${resolvedSiteId})`);
+      }
+    }
+
+    if (!resolvedSiteId) {
       const newCode = generateSiteCode(rawSiteHint);
       console.log(`[Location Resolver] Auto-creating new site: "${rawSiteHint}" (code: ${newCode})`);
       const { data: createdSite, error: siteErr } = await supabase
@@ -218,14 +228,23 @@ async function findOrCreateLocation(
       .from("zones")
       .select("id, name")
       .eq("site_id", resolvedSiteId)
-      .ilike("name", rawZoneHint)
-      .limit(1);
+      .eq("is_active", true);
 
     if (matchedZones && matchedZones.length > 0) {
-      resolvedZoneId = matchedZones[0].id;
-      resolvedZoneName = matchedZones[0].name;
-      console.log(`[Location Resolver] Matched existing zone: ${resolvedZoneName} (${resolvedZoneId})`);
-    } else {
+      const zoneLower = rawZoneHint.toLowerCase();
+      const foundZone = matchedZones.find((z) => {
+        const zLower = z.name.toLowerCase();
+        return zLower === zoneLower || zLower.includes(zoneLower) || zoneLower.includes(zLower);
+      });
+
+      if (foundZone) {
+        resolvedZoneId = foundZone.id;
+        resolvedZoneName = foundZone.name;
+        console.log(`[Location Resolver] Matched existing zone: ${resolvedZoneName} (${resolvedZoneId})`);
+      }
+    }
+
+    if (!resolvedZoneId) {
       const newZoneCode = generateZoneCode(rawZoneHint);
       console.log(`[Location Resolver] Auto-creating new zone: "${rawZoneHint}" (code: ${newZoneCode})`);
       const { data: createdZone, error: zoneErr } = await supabase
@@ -248,6 +267,11 @@ async function findOrCreateLocation(
     }
   }
 
+  // Deduplicate locationDetail if identical to resolvedZoneName
+  if (locationDetail && resolvedZoneName && locationDetail.toLowerCase() === resolvedZoneName.toLowerCase()) {
+    locationDetail = null;
+  }
+
   // 3. Format Location String
   const formattedLocation = formatItemLocation(resolvedSiteName, resolvedZoneName || undefined, locationDetail);
 
@@ -261,11 +285,22 @@ async function findOrCreateLocation(
   };
 }
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+};
+
 /**
  * Main Webhook Request Handler
  */
 export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   const method = req.method;
+
+  // Handle CORS preflight OPTIONS requests from browser clients (e.g. portal)
+  if (method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   // ==========================================================================
   // 1. Meta Webhook Handshake Verification (HTTP GET)
@@ -287,7 +322,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
       console.log("[Webhook Handshake] Successfully verified Meta challenge token.");
       return new Response(challenge ?? "", {
         status: 200,
-        headers: { "Content-Type": "text/plain" },
+        headers: { "Content-Type": "text/plain", ...corsHeaders },
       });
     }
 
@@ -296,7 +331,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
     );
     return new Response("Forbidden", {
       status: 403,
-      headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": "text/plain", ...corsHeaders },
     });
   }
 
@@ -306,7 +341,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   if (method !== "POST") {
     return new Response("Method Not Allowed", {
       status: 405,
-      headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": "text/plain", ...corsHeaders },
     });
   }
 
@@ -328,9 +363,13 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
     // raw text or malformed JSON
   }
 
-  // Handle internal delivery alert action (e.g. from portal dashboard or supabase webhook)
-  if (parsedBodyJson && parsedBodyJson.action === "delivery_alert" && parsedBodyJson.requisition_id) {
-    console.log(`[Webhook Delivery Alert] Internal delivery alert triggered for ${parsedBodyJson.requisition_id}`);
+  // Handle internal delivery alert action (e.g. notify_delivery or delivery_alert from portal dashboard or supabase webhook)
+  if (
+    parsedBodyJson &&
+    (parsedBodyJson.action === "notify_delivery" || parsedBodyJson.action === "delivery_alert") &&
+    parsedBodyJson.requisition_id
+  ) {
+    console.log(`[Webhook Delivery Alert] Internal delivery notification triggered for ${parsedBodyJson.requisition_id}`);
     const supabase = getServiceRoleClient();
     const { data: reqRecord, error: reqErr } = await supabase
       .from("requisitions")
@@ -347,7 +386,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
     if (reqErr || !reqRecord) {
       return new Response(JSON.stringify({ error: "Requisition not found" }), {
         status: 404,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
@@ -355,7 +394,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
     if (!recipientPhone) {
       return new Response(JSON.stringify({ message: "No phone number on requester record" }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
@@ -379,7 +418,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
       }),
       {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       }
     );
   }
@@ -774,6 +813,50 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
     `[Webhook Extraction] Extracted ${extraction.items.length} items, Urgency: ${extraction.urgency}, Site: ${extraction.site_name || "N/A"}, Zone: ${extraction.zone_name || "N/A"}, LocationDetail: ${extraction.location_detail || "N/A"}`
   );
 
+  // Update rawMessageText for audio voice notes to store actual transcribed text
+  if (inboundMessage.type === "audio") {
+    if (extraction.transcript && extraction.transcript.trim()) {
+      rawMessageText = extraction.transcript.trim();
+    } else if (extraction.items.length > 0) {
+      rawMessageText = extraction.items
+        .map((it) => `${it.quantity}x ${it.item_description}`)
+        .join(", ");
+    } else {
+      rawMessageText = "Field voice note requisition";
+    }
+    console.log(`[Webhook Extraction] Transcribed audio text updated: "${rawMessageText}"`);
+  }
+
+  // Pre-generate requisition ID so audio storage path is deterministic
+  const requisitionId = crypto.randomUUID();
+  let audioUrl: string | null = null;
+
+  // Upload binary audio buffer to Supabase Storage ('requisitions-media' bucket)
+  if (audioData) {
+    try {
+      const storagePath = `${companyId}/${requisitionId}.ogg`;
+      console.log(`[Webhook Audio] Uploading audio binary to 'requisitions-media': ${storagePath}`);
+      const { error: uploadErr } = await supabase.storage
+        .from("requisitions-media")
+        .upload(storagePath, audioData.data, {
+          contentType: audioData.mimeType || "audio/ogg",
+          upsert: true,
+        });
+
+      if (uploadErr) {
+        console.error("[Webhook Audio] Failed to upload audio to storage:", uploadErr);
+      } else {
+        const { data: urlData } = supabase.storage
+          .from("requisitions-media")
+          .getPublicUrl(storagePath);
+        audioUrl = urlData.publicUrl;
+        console.log(`[Webhook Audio] Generated audio public URL: ${audioUrl}`);
+      }
+    } catch (storageException) {
+      console.error("[Webhook Audio] Storage upload exception:", storageException);
+    }
+  }
+
   // ==========================================================================
   // 7. Database Operations via Supabase Service Role Client
   // ==========================================================================
@@ -832,6 +915,7 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   const { data: insertedRequisition, error: reqInsertErr } = await supabase
     .from("requisitions")
     .insert({
+      id: requisitionId,
       company_id: companyId,
       site_id: siteId,
       zone_id: zoneId,
@@ -840,13 +924,14 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
       status: "LOGGED",
       urgency: extraction.urgency,
       raw_message_text: rawMessageText,
+      audio_url: audioUrl,
       whatsapp_message_id: whatsappMessageId,
       is_duplicate_suspect: isDuplicateSuspect,
       duplicate_of_id: duplicateOfId,
       total_estimated_zar: 0.00,
       notes: notesBuffer.length > 0 ? notesBuffer.join("\n") : null,
     })
-    .select("id, reference_code, site_id, zone_id, location_detail, requester_id, status, urgency, is_duplicate_suspect, created_at")
+    .select("id, reference_code, site_id, zone_id, location_detail, requester_id, status, urgency, audio_url, is_duplicate_suspect, created_at")
     .single();
 
   if (reqInsertErr || !insertedRequisition) {
@@ -854,7 +939,6 @@ export async function handleWhatsAppWebhook(req: Request): Promise<Response> {
     throw new Error(`Failed to insert requisition: ${reqInsertErr?.message}`);
   }
 
-  const requisitionId = insertedRequisition.id;
   const referenceCode = insertedRequisition.reference_code;
   console.log(`[Webhook Ingestion] Created requisition header: ${referenceCode} (${requisitionId})`);
 
