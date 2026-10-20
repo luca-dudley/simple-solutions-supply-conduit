@@ -55,6 +55,16 @@
     try {
       localStorage.removeItem("sc_user_profile");
       localStorage.removeItem("sc_demo_session");
+      // Thoroughly purge all Supabase auth storage tokens
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith("sb-") || key.startsWith("sc_") || key.includes("supabase"))) {
+          if (key === "sc_supabase_url" || key === "sc_supabase_anon_key") continue;
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.clear();
       }
@@ -63,6 +73,43 @@
     }
   }
 
+  async function handleSignOut(event) {
+    if (event) {
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      if (typeof event.stopPropagation === "function") event.stopPropagation();
+    }
+    const profileDropdown = document.getElementById("profileDropdownMenu");
+    if (profileDropdown) {
+      profileDropdown.classList.add("hidden");
+    }
+
+    // 1. Immediately wipe all local tokens and session data so client is 100% signed out
+    clearSession();
+    try {
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.clear();
+      }
+    } catch (_) {}
+
+    // 2. Best-effort Supabase signout (local scope to instantly drop session without waiting on network lock)
+    try {
+      const client = getSupabase();
+      if (client && client.auth) {
+        await Promise.race([
+          client.auth.signOut({ scope: "local" }),
+          new Promise((resolve) => setTimeout(resolve, 500))
+        ]);
+      }
+    } catch (err) {
+      console.warn("Sign out background error:", err);
+    }
+
+    // 3. Immediately redirect to sign in view
+    window.location.replace("index.html");
+  }
+
+  window.handleSignOut = handleSignOut;
+
   window.AppConfig = {
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
@@ -70,5 +117,6 @@
     getStoredUserProfile,
     setStoredUserProfile,
     clearSession,
+    handleSignOut,
   };
 })(typeof window !== "undefined" ? window : globalThis);

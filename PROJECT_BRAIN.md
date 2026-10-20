@@ -377,6 +377,18 @@ Updated automatically via:
     - Audited tracked files and untracked brand assets under `portal/assets/logos/` (`simple_bg-removed.png`, `simple_standard.jpg`, `simple_white.png`).
     - Verified zero orphaned artifacts, temporary test files, or unencrypted secrets in the workspace.
 - **Current Operational State**: Clean branded mastheads and browser tab favicons active; login screen provides explicit credential authentication without sticky auto-redirects; session sign-out guarantees complete local/session storage cleanup; database schema fully synchronized.
+
+### [2026-10-20] - Header Brand Icon Contrast Resolution & Resilient Profile Sign-Out
+- **Author**: AGY (Lead Architect & Frontend Builder) & Closer Agent (@closer)
+- **Milestones Completed**:
+  - **Header Brand Icon Contrast Fix (`portal/requisitions.html`, `portal/index.html`)**:
+    - Replaced low-contrast black icon asset with the white transparent brand asset (`portal/assets/logos/simple_white.png`) inside the dark `bg-slate-900` masthead box.
+    - Eliminates the invisible "black box" visual bug, cleanly rendering the high-contrast white emblem alongside the "Supply Conduit" brand title across both the Requisitions board and Sign-In views.
+  - **Fail-Safe Profile Sign-Out Engine (`portal/assets/js/config.js`, `portal/assets/js/kanban.js`, `portal/requisitions.html`)**:
+    - Expanded `AppConfig.clearSession()` to thoroughly sweep and purge all active Supabase auth tokens (`sb-*`, `sc_*`, `supabase*`) from `localStorage` and `sessionStorage`.
+    - Implemented global fail-proof `window.handleSignOut(event)` with immediate local token purge and a bounded 500ms `signOut({ scope: "local" })` race to prevent Web Locks API / network stalls.
+    - Added direct `onclick="window.handleSignOut(event)"` to `#signOutBtn` in `portal/requisitions.html`, backed by listener delegation in `kanban.js`.
+- **Current Operational State**: Supply Conduit icon displays cleanly with high contrast on dark badge containers; profile sign-out executes instantaneously with zero hanging or persistent session state.
 - **Next Engineering Steps**:
   1. Commit and push current frontend branding updates and brand logo assets.
   2. Proceed to Phase 5 production hosting deployment (Cloudflare Pages or target edge provider) with custom domain binding.

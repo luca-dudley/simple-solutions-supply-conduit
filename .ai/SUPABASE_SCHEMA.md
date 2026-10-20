@@ -1,5 +1,5 @@
 # Live Supabase Schema Manifest
-> **Last Synchronized:** 2026-10-20 10:27:26 UTC
+> **Last Synchronized:** 2026-10-20 10:50:33 UTC
 > **Source:** Remote Supabase Instance via pg_dump (Direct Connection)
 
 ---
@@ -11,7 +11,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict cfYggsJPlqcuEPwaaghia7kXYhoDPEaMqzkxZavzjfWu0N9E2iZtEIpATIvKH3q
+\restrict HpCFMX5bhOxPD2prIKFLZEiWxg67MtP7UQbefs4YbhxrmEOMA5kSNQpwuGndwRt
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.11 (Ubuntu 17.11-1.pgdg24.04+2)
@@ -879,6 +879,6 @@ CREATE POLICY zones_tenant_select ON public.zones FOR SELECT TO authenticated US
 -- PostgreSQL database dump complete
 --
 
-\unrestrict cfYggsJPlqcuEPwaaghia7kXYhoDPEaMqzkxZavzjfWu0N9E2iZtEIpATIvKH3q
+\unrestrict HpCFMX5bhOxPD2prIKFLZEiWxg67MtP7UQbefs4YbhxrmEOMA5kSNQpwuGndwRt
 
 ```

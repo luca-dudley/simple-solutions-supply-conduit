@@ -1730,21 +1730,14 @@
 
     // Sign Out
     if (signOutBtn) {
-      signOutBtn.addEventListener("click", async () => {
-        if (profileDropdownMenu) profileDropdownMenu.classList.add("hidden");
-        const client = AppConfig.getSupabase();
-        if (client) {
-          try {
-            await client.auth.signOut();
-          } catch (err) {
-            console.warn("Sign out error:", err);
-          }
+      signOutBtn.addEventListener("click", (e) => {
+        if (typeof window.handleSignOut === "function") {
+          window.handleSignOut(e);
+        } else {
+          if (profileDropdownMenu) profileDropdownMenu.classList.add("hidden");
+          AppConfig.clearSession();
+          window.location.replace("index.html");
         }
-        AppConfig.clearSession();
-        if (typeof sessionStorage !== "undefined") {
-          sessionStorage.clear();
-        }
-        window.location.replace("index.html");
       });
     }
   }
