@@ -311,6 +311,9 @@
         console.error("User account has no active profile in tenant:", profileErr);
         await supabase.auth.signOut();
         AppConfig.clearSession();
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.clear();
+        }
         window.location.replace("index.html");
         return false;
       }
@@ -356,6 +359,9 @@
         if (event === "SIGNED_OUT" || !newSession) {
           console.warn("Auth state changed to SIGNED_OUT. Redirecting to index.html.");
           AppConfig.clearSession();
+          if (typeof sessionStorage !== "undefined") {
+            sessionStorage.clear();
+          }
           window.location.replace("index.html");
         }
       });
@@ -1726,10 +1732,17 @@
     if (signOutBtn) {
       signOutBtn.addEventListener("click", async () => {
         if (profileDropdownMenu) profileDropdownMenu.classList.add("hidden");
-        AppConfig.clearSession();
         const client = AppConfig.getSupabase();
         if (client) {
-          await client.auth.signOut();
+          try {
+            await client.auth.signOut();
+          } catch (err) {
+            console.warn("Sign out error:", err);
+          }
+        }
+        AppConfig.clearSession();
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.clear();
         }
         window.location.replace("index.html");
       });

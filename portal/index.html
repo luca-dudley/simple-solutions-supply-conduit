@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign In | Supply Conduit Operational Portal</title>
+  <link rel="icon" type="image/png" href="assets/logos/simple_bg-removed.png">
   <!-- Google Fonts: Inter & Playfair Display -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,8 +48,8 @@
   <header class="w-full border-b border-slate-200/80 bg-white px-6 py-4 shadow-2xs">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
       <div class="flex items-center space-x-3.5">
-        <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow-xs">
-          <i data-lucide="layers" class="w-5 h-5"></i>
+        <div class="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center shadow-xs">
+          <img src="assets/logos/simple_bg-removed.png" alt="Simple Solutions" class="w-7 h-7 object-contain">
         </div>
         <div class="flex items-center gap-2.5">
           <span class="font-serif font-bold tracking-tight text-slate-900 text-xl leading-none">Supply Conduit</span>
@@ -168,33 +169,6 @@
       }
       authAlert.textContent = message;
     }
-
-    // Auto-redirect if valid active session exists
-    (async function checkExistingSession() {
-      const client = AppConfig.getSupabase();
-      if (!client) return;
-
-      try {
-        const { data: { session } } = await client.auth.getSession();
-        if (session && session.user) {
-          const { data: profile } = await client
-            .from('user_profiles')
-            .select('id, full_name, role, is_active, company_id, company:companies(id, name, company_code)')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-
-          if (profile && profile.is_active) {
-            AppConfig.setStoredUserProfile(profile);
-            window.location.replace('requisitions.html');
-          } else {
-            await client.auth.signOut();
-            AppConfig.clearSession();
-          }
-        }
-      } catch (err) {
-        console.warn('Session check check failed:', err);
-      }
-    })();
 
     // Handle Supabase Auth Sign In
     authForm.addEventListener('submit', async (e) => {

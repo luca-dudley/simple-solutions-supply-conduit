@@ -52,8 +52,15 @@
   }
 
   function clearSession() {
-    localStorage.removeItem("sc_user_profile");
-    localStorage.removeItem("sc_demo_session");
+    try {
+      localStorage.removeItem("sc_user_profile");
+      localStorage.removeItem("sc_demo_session");
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.clear();
+      }
+    } catch (e) {
+      console.warn("Failed to clear session:", e);
+    }
   }
 
   window.AppConfig = {

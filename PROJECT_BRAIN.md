@@ -1,7 +1,7 @@
 # PROJECT BRAIN: Supply Conduit
 
 > **Single Source of Truth (SSOT)** for repository architecture, data models, runtime boundaries, and current operational state.  
-> Last Synchronized: 2026-10-08
+> Last Synchronized: 2026-10-20
 
 ---
 
@@ -358,5 +358,29 @@ Updated automatically via:
     - Added `renderSitesList()` to display registered tenant operational sites and codes inside `#sitesModal`.
     - Protected all legacy and removed DOM references with null-safe guards.
 - **Current Operational State**: End-to-end field procurement conduit fully operational in production. Sub-4s ingestion latency with Gemini 3.8 Flash, public audio voice note storage and playback, automated Template C WhatsApp arrival notifications, fail-closed multi-tenant RLS, and executive The Vault portal UI live.
+
+### [2026-10-20] - Frontend Branding Integration, Favicon & Clean Auth Screen Polish
+- **Author**: AGY (Lead Architect & Frontend Builder) & Closer Agent (@closer)
+- **Milestones Completed**:
+  - **Browser Tab Favicon & Masthead Brand Logo (`portal/index.html`, `portal/requisitions.html`)**:
+    - Added `<link rel="icon" type="image/png" href="assets/logos/simple_bg-removed.png">` across both `portal/index.html` and `portal/requisitions.html` using clean relative asset paths.
+    - Integrated official Simple Solutions transparent brand icon (`portal/assets/logos/simple_bg-removed.png`) into the masthead icon containers, vertically centered with the "Supply Conduit" serif typography.
+    - Updated user profile dropdown header placeholder to cleanly display "Simple Solutions • SIMP01" without legacy demo markers.
+  - **Auth Screen Polish & Sticky Auto-Login Removal (`portal/index.html`, `portal/assets/js/config.js`, `portal/assets/js/kanban.js`)**:
+    - Purged automatic IIFE session redirect (`checkExistingSession`) on `portal/index.html` to eliminate sticky login bounces and allow clean, explicit credential entry.
+    - Verified complete removal of legacy demo bypass controls and mock credentials.
+    - Hardened `#signOutBtn` event handler and session guards to ensure `supabase.auth.signOut()` executes before clearing both `localStorage` and `sessionStorage`, cleanly redirecting to `index.html` without auto re-authenticating.
+  - **Database Schema Synchronization & Audit**:
+    - Executed `./scripts/sync_schema.sh` to extract and verify the live remote PostgreSQL schema manifest in [`.ai/SUPABASE_SCHEMA.md`](file:///home/luca/dev/simple-solutions-supply-conduit/.ai/SUPABASE_SCHEMA.md).
+    - Confirmed full alignment of database policies, triggers, and functions with zero drift.
+  - **Working Tree Integrity**:
+    - Audited tracked files and untracked brand assets under `portal/assets/logos/` (`simple_bg-removed.png`, `simple_standard.jpg`, `simple_white.png`).
+    - Verified zero orphaned artifacts, temporary test files, or unencrypted secrets in the workspace.
+- **Current Operational State**: Clean branded mastheads and browser tab favicons active; login screen provides explicit credential authentication without sticky auto-redirects; session sign-out guarantees complete local/session storage cleanup; database schema fully synchronized.
+- **Next Engineering Steps**:
+  1. Commit and push current frontend branding updates and brand logo assets.
+  2. Proceed to Phase 5 production hosting deployment (Cloudflare Pages or target edge provider) with custom domain binding.
+  3. Validate end-to-end inbound WhatsApp voice and text webhook handling in live production traffic.
+
 
 
